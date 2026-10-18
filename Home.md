@@ -39,6 +39,7 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Swimming and Underwater Movement]]
   - [[Rope System]]
   - [[Procedural Cave Generation]]
+    - [[Cave Generator Algorithm]] (working prototype)
   - [[Water, Light and Silt Visuals]]
   - [[Multiplayer, Steam and Voice]]
   - [[Performance and Mac]]

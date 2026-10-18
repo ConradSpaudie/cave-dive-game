@@ -1,0 +1,724 @@
+<title>Cave Generator Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a cave survey sheet. Title block across the top, two survey views (extended elevation, plan) on the left, the tabulated survey notes and legend on the right; stacks to one column on phones. */
+:root {
+  --paper: #eef2ee;
+  --sheet: #f7f9f6;
+  --ink: #1c2a2c;
+  --ink-soft: #4f6164;
+  --rule: #c3cfca;
+  --grid: rgba(28, 42, 44, 0.07);
+  --line-main: #c2361f;
+  --line-branch: #33484b;
+  --line-loop: #1f6f8b;
+  --mark: #1c2a2c;
+  --treasure: #b07a00;
+  --focus: #1f6f8b;
+  --z0: #2f9378;
+  --z1: #2f72b8;
+  --z2: #5a52b0;
+  --z3: #b48a12;
+  --z4: #b23c7a;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.6rem;
+  --step-3: 2.4rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d1416;
+    --sheet: #121c1f;
+    --ink: #d6e2de;
+    --ink-soft: #92a6a3;
+    --rule: #2a3a3d;
+    --grid: rgba(214, 226, 222, 0.06);
+    --line-main: #ff7a5c;
+    --line-branch: #b9c9c5;
+    --line-loop: #5cc3e0;
+    --mark: #e8f0ed;
+    --treasure: #f0c24a;
+    --focus: #5cc3e0;
+    --z0: #4cc3a0;
+    --z1: #5c9ee8;
+    --z2: #9a8cf0;
+    --z3: #e2b83a;
+    --z4: #ec6aae;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d1416;
+  --sheet: #121c1f;
+  --ink: #d6e2de;
+  --ink-soft: #92a6a3;
+  --rule: #2a3a3d;
+  --grid: rgba(214, 226, 222, 0.06);
+  --line-main: #ff7a5c;
+  --line-branch: #b9c9c5;
+  --line-loop: #5cc3e0;
+  --mark: #e8f0ed;
+  --treasure: #f0c24a;
+  --focus: #5cc3e0;
+  --z0: #4cc3a0;
+  --z1: #5c9ee8;
+  --z2: #9a8cf0;
+  --z3: #e2b83a;
+  --z4: #ec6aae;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Title block */
+.titleblock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 24px;
+  align-items: end;
+  border: 1.5px solid var(--ink);
+  background: var(--sheet);
+  padding: 14px 16px;
+}
+.titleblock h1 { font-size: var(--step-3); line-height: 1; text-transform: uppercase; }
+.titleblock p { margin: 6px 0 0; color: var(--ink-soft); max-width: 62ch; font-size: var(--step--1); }
+.tb-meta { display: grid; grid-template-columns: repeat(3, auto); gap: 0; border: 1px solid var(--rule); font-family: var(--font-data); font-size: var(--step--1); }
+.tb-meta div { padding: 4px 10px; border-right: 1px solid var(--rule); min-width: 0; }
+.tb-meta div:last-child { border-right: 0; }
+.tb-meta span { display: block; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-soft); font-size: 0.72rem; }
+
+/* Controls */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
+.field { display: grid; gap: 3px; }
+.field label, .mods legend { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.78rem; color: var(--ink-soft); }
+input[type="text"], select, button {
+  font: inherit;
+  font-family: var(--font-data);
+  font-size: var(--step--1);
+  color: var(--ink);
+  background: var(--sheet);
+  border: 1px solid var(--ink-soft);
+  border-radius: 2px;
+  padding: 7px 10px;
+  min-height: 36px;
+}
+input[type="text"] { width: 9.5rem; font-variant-numeric: tabular-nums; }
+button { cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.9rem; font-weight: 600; }
+button.primary { background: var(--ink); color: var(--sheet); border-color: var(--ink); }
+button:hover { border-color: var(--ink); }
+.mods { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.mods legend { margin-bottom: 3px; padding: 0; }
+.mods label { display: inline-flex; gap: 5px; align-items: center; font-family: var(--font-data); font-size: var(--step--1); cursor: pointer; }
+.status { font-family: var(--font-data); font-size: var(--step--1); color: var(--ink-soft); min-height: 1.5em; }
+
+/* Sheet */
+.sheet { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.views { display: grid; gap: 16px; min-width: 0; }
+.panel { border: 1px solid var(--rule); background: var(--sheet); min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+.panel-head h2 { font-size: var(--step-1); text-transform: uppercase; letter-spacing: 0.06em; }
+.panel-head small { font-family: var(--font-data); color: var(--ink-soft); font-size: 0.75rem; }
+.canvas-box { position: relative; width: 100%; }
+canvas { display: block; width: 100%; max-width: 100%; }
+.readout { font-family: var(--font-data); font-size: 0.75rem; color: var(--ink-soft); padding: 6px 12px; border-top: 1px solid var(--rule); min-height: 2.2em; }
+
+/* Notes */
+.notes { display: grid; gap: 16px; min-width: 0; }
+table.stats { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+table.stats th { text-align: left; font-weight: 400; color: var(--ink-soft); padding: 5px 12px; border-bottom: 1px solid var(--rule); }
+table.stats td { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; padding: 5px 12px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+table.stats tr:last-child th, table.stats tr:last-child td { border-bottom: 0; }
+td.big { font-size: var(--step-1); font-weight: 600; color: var(--ink); }
+.pill { display: inline-block; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; padding: 1px 7px; border: 1px solid currentColor; border-radius: 2px; }
+.zonebar { display: flex; height: 12px; margin: 10px 12px 4px; border: 1px solid var(--rule); }
+.zonebar span { display: block; height: 100%; }
+.zonebar-cap { font-family: var(--font-data); font-size: 0.72rem; color: var(--ink-soft); padding: 0 12px 10px; }
+ul.legend { list-style: none; margin: 0; padding: 8px 12px 12px; display: grid; gap: 6px; font-size: var(--step--1); }
+ul.legend li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: center; }
+ul.legend .depth { font-family: var(--font-data); color: var(--ink-soft); font-size: 0.72rem; }
+.legend-sub { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; color: var(--ink-soft); padding: 10px 12px 0; }
+.swatch { width: 22px; height: 14px; border: 1.5px solid; }
+canvas.key { width: 28px; height: 18px; }
+.foot { font-size: 0.75rem; color: var(--ink-soft); font-family: var(--font-data); }
+
+@media (max-width: 980px) {
+  .sheet { grid-template-columns: minmax(0, 1fr); }
+  .notes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .titleblock { grid-template-columns: minmax(0, 1fr); }
+  .titleblock h1 { font-size: var(--step-2); }
+  .tb-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
+  input[type="text"] { width: 8rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+
+<div class="wrap">
+  <header class="titleblock">
+    <div>
+      <h1>Cave Generator Lab</h1>
+      <p>Survey of a generated cave. Same seed, same cave, on every machine. Grid cell 8 m. Main line in red, side passages in ink, loops that reconnect dashed.</p>
+    </div>
+    <div class="tb-meta" aria-live="polite">
+      <div><span>Seed</span><b id="tb-seed">12345</b></div>
+      <div><span>Layout</span><b id="tb-arch">river</b></div>
+      <div><span>Checksum</span><b id="tb-sum">--------</b></div>
+    </div>
+  </header>
+
+  <form class="controls" id="controls" autocomplete="off">
+    <div class="field">
+      <label for="seed">Seed (uint32)</label>
+      <input type="text" id="seed" inputmode="numeric" value="12345" aria-describedby="status">
+    </div>
+    <div class="field">
+      <label for="difficulty">Difficulty</label>
+      <select id="difficulty">
+        <option value="easy">Easy, about 15 min</option>
+        <option value="standard" selected>Standard, 30 to 45 min</option>
+        <option value="hard">Hard, 45 to 60+ min</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="archetype">Layout archetype</label>
+      <select id="archetype">
+        <option value="">Rolled from seed</option>
+        <option value="shaft">The Shaft</option>
+        <option value="maze">The Maze</option>
+        <option value="river">The River</option>
+        <option value="chain">The Chain</option>
+        <option value="split">The Split</option>
+      </select>
+    </div>
+    <fieldset class="mods">
+      <legend>Layout modifiers</legend>
+      <label><input type="checkbox" id="mod-flood" value="flood_surge"> Flood Surge</label>
+      <label><input type="checkbox" id="mod-silt" value="shifting_silt"> Shifting Silt</label>
+      <label><input type="checkbox" id="mod-collapse" value="collapse_ahead"> Collapse Ahead</label>
+    </fieldset>
+    <button type="submit" id="gen">Generate</button>
+    <button type="button" class="primary" id="newseed">New seed</button>
+  </form>
+  <div class="status" id="status" role="status"></div>
+
+  <div class="sheet">
+    <div class="views">
+      <section class="panel" aria-labelledby="h-elev">
+        <div class="panel-head"><h2 id="h-elev">Elevation, looking north</h2><small>east (x) against depth</small></div>
+        <div class="canvas-box"><canvas id="elev" role="img" aria-label="Side elevation of the generated cave"></canvas></div>
+        <div class="readout" id="read-elev">Point at a passage to read it.</div>
+      </section>
+      <section class="panel" aria-labelledby="h-plan">
+        <div class="panel-head"><h2 id="h-plan">Plan view</h2><small>deeper passages drawn on top</small></div>
+        <div class="canvas-box"><canvas id="plan" role="img" aria-label="Top-down plan of the generated cave"></canvas></div>
+        <div class="readout" id="read-plan">Point at a passage to read it.</div>
+      </section>
+    </div>
+
+    <aside class="notes">
+      <section class="panel" aria-labelledby="h-stats">
+        <div class="panel-head"><h2 id="h-stats">Survey notes</h2><small id="diff-pill"></small></div>
+        <table class="stats">
+          <tbody id="stats-body"></tbody>
+        </table>
+        <div class="zonebar" id="zonebar" aria-hidden="true"></div>
+        <div class="zonebar-cap" id="zonebar-cap">Main line time by zone</div>
+      </section>
+      <section class="panel" aria-labelledby="h-legend">
+        <div class="panel-head"><h2 id="h-legend">Legend</h2><small>colour = depth zone</small></div>
+        <ul class="legend" id="legend-zones"></ul>
+        <div class="legend-sub">Survey symbols</div>
+        <ul class="legend" id="legend-marks"></ul>
+      </section>
+    </aside>
+  </div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+/*__GENERATOR__*/
+</script>
+<script>
+(function () {
+  'use strict';
+  var G = window.CaveGen, C = G.constants, CELL = C.CELL_M;
+  var ZONE_RANGES = ['0 to 20 m', '20 to 60 m', '60 to 120 m', '120 to 200 m', '200 m and deeper'];
+  var current = null;
+  var hit = { elev: null, plan: null };
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function palette() {
+    return {
+      sheet: css('--sheet'), ink: css('--ink'), soft: css('--ink-soft'), rule: css('--rule'), grid: css('--grid'),
+      main: css('--line-main'), branch: css('--line-branch'), loop: css('--line-loop'), mark: css('--mark'), treasure: css('--treasure'),
+      zones: [css('--z0'), css('--z1'), css('--z2'), css('--z3'), css('--z4')],
+      fontData: css('--font-data'), fontDisplay: css('--font-display')
+    };
+  }
+  function alpha(hex, a) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  // ---------- symbols (shared by canvases and legend)
+  function sym(ctx, kind, x, y, s, pal, dir) {
+    ctx.save();
+    ctx.lineWidth = Math.max(1.25, s * 0.16);
+    ctx.strokeStyle = pal.mark; ctx.fillStyle = pal.mark;
+    if (kind === 'air_pocket') {
+      ctx.fillStyle = pal.sheet;
+      ctx.beginPath(); ctx.arc(x, y, s * 0.42, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, s * 0.14, 0, Math.PI * 2); ctx.fillStyle = pal.mark; ctx.fill();
+    } else if (kind === 'squeeze') {
+      // Hourglass: two filled wedges meeting at a pinch point.
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.45, y - s * 0.38); ctx.lineTo(x - s * 0.06, y); ctx.lineTo(x - s * 0.45, y + s * 0.38); ctx.closePath();
+      ctx.moveTo(x + s * 0.45, y - s * 0.38); ctx.lineTo(x + s * 0.06, y); ctx.lineTo(x + s * 0.45, y + s * 0.38); ctx.closePath();
+      ctx.fill();
+    } else if (kind === 'landmark') {
+      ctx.beginPath();
+      for (var i = 0; i < 10; i++) {
+        var r = i % 2 ? s * 0.24 : s * 0.6, a = -Math.PI / 2 + i * Math.PI / 5;
+        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
+      ctx.closePath(); ctx.fillStyle = pal.sheet; ctx.fill(); ctx.stroke();
+    } else if (kind === 'dead_end') {
+      // Survey dead-end: passage line stopped by a heavy bar.
+      ctx.beginPath(); ctx.moveTo(x - s * 0.45, y); ctx.lineTo(x + s * 0.2, y); ctx.stroke();
+      ctx.lineWidth = Math.max(2.5, s * 0.3);
+      ctx.beginPath(); ctx.moveTo(x + s * 0.28, y - s * 0.45); ctx.lineTo(x + s * 0.28, y + s * 0.45); ctx.stroke();
+    } else if (kind === 'treasure') {
+      ctx.fillStyle = pal.treasure; ctx.strokeStyle = pal.mark;
+      ctx.beginPath(); ctx.moveTo(x, y - s * 0.5); ctx.lineTo(x + s * 0.38, y); ctx.lineTo(x, y + s * 0.5); ctx.lineTo(x - s * 0.38, y); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    } else if (kind === 'entrance') {
+      ctx.fillStyle = pal.main;
+      ctx.beginPath(); ctx.moveTo(x, y + s * 0.5); ctx.lineTo(x - s * 0.5, y - s * 0.4); ctx.lineTo(x + s * 0.5, y - s * 0.4); ctx.closePath(); ctx.fill();
+    } else if (kind === 'bottom') {
+      ctx.fillStyle = pal.main;
+      ctx.fillRect(x - s * 0.42, y - s * 0.42, s * 0.84, s * 0.84);
+      ctx.strokeStyle = pal.sheet;
+      ctx.beginPath(); ctx.moveTo(x - s * 0.25, y - s * 0.25); ctx.lineTo(x + s * 0.25, y + s * 0.25); ctx.moveTo(x + s * 0.25, y - s * 0.25); ctx.lineTo(x - s * 0.25, y + s * 0.25); ctx.stroke();
+    } else if (kind === 'current') {
+      ctx.beginPath();
+      for (var k = 0; k <= 12; k++) { var px = x - s * 0.45 + k * s * 0.075, py = y + Math.sin(k / 12 * Math.PI * 2) * s * 0.18; if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + s * 0.3, y - s * 0.18); ctx.lineTo(x + s * 0.48, y); ctx.lineTo(x + s * 0.3, y + s * 0.18); ctx.stroke();
+    } else if (kind === 'silt_floor') {
+      var dots = [[-0.3, 0.2], [0, 0.28], [0.3, 0.2], [-0.15, 0], [0.15, 0], [-0.3, -0.2], [0.3, -0.2]];
+      for (var j = 0; j < dots.length; j++) { ctx.beginPath(); ctx.arc(x + dots[j][0] * s, y + dots[j][1] * s, Math.max(1, s * 0.07), 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  function markerKinds(p) {
+    var out = [];
+    if (p.start) out.push('entrance');
+    if (p.bottom) out.push('bottom');
+    if (p.type === 'air_pocket' || p.dry) out.push('air_pocket');
+    if (p.type === 'squeeze' || p.type === 'landmark' || p.type === 'dead_end' || p.type === 'current' || p.type === 'silt_floor') out.push(p.type);
+    if (p.treasure) out.push('treasure');
+    return out;
+  }
+
+  // ---------- canvas setup
+  function setupCanvas(cv, cssW, cssH) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.style.height = cssH + 'px';
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+  function extents(cave) {
+    var e = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9, d0: 0, d1: -1e9 };
+    cave.pieces.forEach(function (p) {
+      e.x0 = Math.min(e.x0, p.x); e.x1 = Math.max(e.x1, p.x + p.w);
+      e.y0 = Math.min(e.y0, p.y); e.y1 = Math.max(e.y1, p.y + p.l);
+      e.d1 = Math.max(e.d1, p.d + p.h);
+    });
+    return e;
+  }
+  function edgeIndex(cave) {
+    var m = new Map();
+    cave.edges.forEach(function (e) { m.set(e[0] + '>' + e[1], e); m.set(e[1] + '>' + e[0], e); });
+    return m;
+  }
+  function centreOf(p) { return [p.x + p.w / 2, p.y + p.l / 2, p.d + p.h / 2]; }
+
+  // Segments between cell centres, tagged main / branch / loop.
+  function segments(cave) {
+    var P = cave.pieces, segs = [];
+    var mainEdge = new Set();
+    for (var i = 0; i + 1 < cave.mainPath.length; i++) mainEdge.add(cave.mainPath[i] + '>' + cave.mainPath[i + 1]);
+    cave.edges.forEach(function (e) {
+      var a = P[e[0]], b = P[e[1]];
+      var ac = [e[2] + 0.5, e[3] + 0.5, e[4] + 0.5];
+      var bc = [ac[0] + C.DX[e[5]], ac[1] + C.DY[e[5]], ac[2] + C.DD[e[5]]];
+      var kind = mainEdge.has(e[0] + '>' + e[1]) ? 'main' : (b.role === 'loop' || a.role === 'loop') ? 'loop' : 'branch';
+      segs.push({ a: ac, b: bc, kind: kind });
+      [[a, ac], [b, bc]].forEach(function (pair) {
+        var p = pair[0];
+        if (p.shape === 'room') segs.push({ a: pair[1], b: centreOf(p), kind: kind });
+      });
+    });
+    return segs;
+  }
+
+  function drawElevation(cave, pal) {
+    var cv = document.getElementById('elev');
+    var box = cv.parentElement, W = box.clientWidth;
+    var e = extents(cave);
+    var padL = 64, padR = 14, padT = 26, padB = 44;
+    var spanX = e.x1 - e.x0 + 2, spanD = e.d1 + 1;
+    var s = (W - padL - padR) / spanX;
+    var maxH = Math.max(320, Math.min(760, window.innerHeight * 0.85));
+    if (spanD * s + padT + padB > maxH) s = (maxH - padT - padB) / spanD;
+    var H = Math.round(spanD * s + padT + padB);
+    var ctx = setupCanvas(cv, W, H);
+    var ox = padL + ((W - padL - padR) - spanX * s) / 2 - (e.x0 - 1) * s;
+    function X(x) { return ox + x * s; }
+    function Y(d) { return padT + d * s; }
+    ctx.fillStyle = pal.sheet; ctx.fillRect(0, 0, W, H);
+    // Zone bands
+    var tops = [0, 20, 60, 120, 200, (e.d1 + 1) * CELL], labels = [];
+    ctx.font = '600 11px ' + pal.fontDisplay;
+    for (var z = 0; z < 5; z++) {
+      var yT = Y(tops[z] / CELL), yB = Math.min(Y(tops[z + 1] / CELL), H - padB);
+      if (yT >= H - padB) break;
+      ctx.fillStyle = alpha(pal.zones[z], 0.07); ctx.fillRect(padL, yT, W - padL - padR, yB - yT);
+      ctx.strokeStyle = alpha(pal.zones[z], 0.6); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, yT); ctx.lineTo(W - padR, yT); ctx.stroke(); ctx.setLineDash([]);
+      if (yB - yT > 14) labels.push([C.ZONE_NAMES[z].toUpperCase(), yT + 3, pal.zones[z]]);
+    }
+    // Faint cell grid
+    ctx.strokeStyle = pal.grid; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var gx = e.x0 - 1; gx <= e.x1 + 1; gx++) { ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(spanD)); }
+    for (var gd = 0; gd <= spanD; gd++) { ctx.moveTo(X(e.x0 - 1), Y(gd)); ctx.lineTo(X(e.x1 + 1), Y(gd)); }
+    ctx.stroke();
+    // Surface line
+    ctx.strokeStyle = pal.ink; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(W - padR, Y(0)); ctx.stroke();
+    ctx.fillStyle = pal.soft; ctx.font = '10px ' + pal.fontData; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText('surface, rope stake', padL + 2, Y(0) - 3);
+    // Depth axis
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = pal.soft;
+    ctx.strokeStyle = pal.ink; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL - 6, Y(0)); ctx.lineTo(padL - 6, Y(spanD)); ctx.stroke();
+    var step = s * (20 / CELL) < 14 ? 40 : 20;
+    for (var m = 0; m <= spanD * CELL; m += step) {
+      ctx.beginPath(); ctx.moveTo(padL - 10, Y(m / CELL)); ctx.lineTo(padL - 6, Y(m / CELL)); ctx.stroke();
+      ctx.fillText(m + ' m', padL - 13, Y(m / CELL));
+    }
+    // Pieces
+    var order = cave.pieces.slice().sort(function (a, b) { return a.y - b.y; });
+    order.forEach(function (p) {
+      var col = pal.zones[p.zone];
+      ctx.fillStyle = alpha(col, p.shape === 'room' ? 0.32 : 0.22);
+      ctx.strokeStyle = alpha(col, 0.85); ctx.lineWidth = 1;
+      var inset = p.shape === 'room' ? 0.06 : 0.18;
+      ctx.fillRect(X(p.x + inset), Y(p.d + inset), (p.w - 2 * inset) * s, (p.h - 2 * inset) * s);
+      ctx.strokeRect(X(p.x + inset), Y(p.d + inset), (p.w - 2 * inset) * s, (p.h - 2 * inset) * s);
+    });
+    drawLines(ctx, cave, pal, function (c) { return [X(c[0]), Y(c[2])]; }, s);
+    drawMarks(ctx, cave, pal, function (p) { var c = centreOf(p); return [X(c[0]), Y(c[2])]; }, s);
+    // Zone names on a paper halo so passages never hide them
+    ctx.save();
+    ctx.font = '600 11px ' + pal.fontDisplay; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round'; ctx.lineWidth = 4; ctx.strokeStyle = pal.sheet;
+    labels.forEach(function (lb) { ctx.strokeText(lb[0], W - padR - 4, lb[1]); ctx.fillStyle = lb[2]; ctx.fillText(lb[0], W - padR - 4, lb[1]); });
+    ctx.restore();
+    // Scale bar
+    scaleBar(ctx, pal, padL, H - 16, s);
+    hit.elev = { X: X, Y: Y, s: s, mode: 'elev' };
+  }
+
+  function drawPlan(cave, pal) {
+    var cv = document.getElementById('plan');
+    var box = cv.parentElement, W = box.clientWidth;
+    var e = extents(cave);
+    var pad = 30, padB = 44;
+    var spanX = e.x1 - e.x0 + 2, spanY = e.y1 - e.y0 + 2;
+    var s = (W - 2 * pad) / spanX;
+    var maxH = Math.max(300, Math.min(640, window.innerHeight * 0.75));
+    if (spanY * s + pad + padB > maxH) s = (maxH - pad - padB) / spanY;
+    var H = Math.round(spanY * s + pad + padB);
+    var ctx = setupCanvas(cv, W, H);
+    var ox = pad + ((W - 2 * pad) - spanX * s) / 2 - (e.x0 - 1) * s;
+    var oy = pad + (e.y1 + 1) * s;
+    function X(x) { return ox + x * s; }
+    function Y(y) { return oy - y * s; }
+    ctx.fillStyle = pal.sheet; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = pal.grid; ctx.lineWidth = 1; ctx.beginPath();
+    for (var gx = e.x0 - 1; gx <= e.x1 + 1; gx++) { ctx.moveTo(X(gx), Y(e.y0 - 1)); ctx.lineTo(X(gx), Y(e.y1 + 1)); }
+    for (var gy = e.y0 - 1; gy <= e.y1 + 1; gy++) { ctx.moveTo(X(e.x0 - 1), Y(gy)); ctx.lineTo(X(e.x1 + 1), Y(gy)); }
+    ctx.stroke();
+    var order = cave.pieces.slice().sort(function (a, b) { return a.d - b.d || a.id - b.id; });
+    order.forEach(function (p) {
+      var col = pal.zones[p.zone];
+      ctx.fillStyle = alpha(col, p.shape === 'room' ? 0.34 : 0.26);
+      ctx.strokeStyle = alpha(col, 0.9); ctx.lineWidth = 1;
+      var inset = p.shape === 'room' ? 0.06 : 0.18;
+      ctx.fillRect(X(p.x + inset), Y(p.y + p.l - inset), (p.w - 2 * inset) * s, (p.l - 2 * inset) * s);
+      ctx.strokeRect(X(p.x + inset), Y(p.y + p.l - inset), (p.w - 2 * inset) * s, (p.l - 2 * inset) * s);
+    });
+    drawLines(ctx, cave, pal, function (c) { return [X(c[0]), Y(c[1])]; }, s);
+    drawMarks(ctx, cave, pal, function (p) { var c = centreOf(p); return [X(c[0]), Y(c[1])]; }, s);
+    northArrow(ctx, pal, W - pad - 4, pad + 6);
+    scaleBar(ctx, pal, pad, H - 16, s);
+    hit.plan = { X: X, Y: Y, s: s, mode: 'plan' };
+  }
+
+  function drawLines(ctx, cave, pal, proj, s) {
+    var segs = segments(cave);
+    var w = Math.max(1, Math.min(3, s * 0.12));
+    ['branch', 'loop', 'main'].forEach(function (kind) {
+      ctx.save();
+      ctx.strokeStyle = kind === 'main' ? pal.main : kind === 'loop' ? pal.loop : pal.branch;
+      ctx.lineWidth = kind === 'main' ? w * 1.8 : w;
+      ctx.lineCap = 'round';
+      if (kind === 'loop') ctx.setLineDash([Math.max(3, s * 0.3), Math.max(2, s * 0.2)]);
+      ctx.beginPath();
+      segs.forEach(function (g) {
+        if (g.kind !== kind) return;
+        var a = proj(g.a), b = proj(g.b);
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      });
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+  function drawMarks(ctx, cave, pal, proj, s) {
+    var size = Math.max(7, Math.min(16, s * 0.8));
+    cave.pieces.forEach(function (p) {
+      var kinds = markerKinds(p);
+      if (!kinds.length) return;
+      var c = proj(p);
+      kinds.forEach(function (k, i) {
+        var off = (i - (kinds.length - 1) / 2) * size * 0.9;
+        sym(ctx, k, c[0] + off, c[1], k === 'landmark' || k === 'bottom' ? size * 1.15 : size, pal);
+      });
+    });
+  }
+  function scaleBar(ctx, pal, x, y, s) {
+    var cells = 1;
+    while (cells * s < 60) cells *= 2;
+    if (cells * s > 160 && cells > 1) cells = cells / 2;
+    var len = cells * s;
+    ctx.save();
+    ctx.lineWidth = 1; ctx.strokeStyle = pal.ink;
+    for (var i = 0; i < 2; i++) {
+      ctx.fillStyle = i === 0 ? pal.ink : pal.sheet;
+      ctx.fillRect(x + i * len / 2, y - 4, len / 2, 6);
+      ctx.strokeRect(x + i * len / 2, y - 4, len / 2, 6);
+    }
+    ctx.fillStyle = pal.ink; ctx.font = '10px ' + pal.fontData; ctx.textBaseline = 'bottom'; ctx.textAlign = 'center';
+    ctx.fillText('0', x, y - 6); ctx.fillText((cells * CELL / 2) + '', x + len / 2, y - 6); ctx.fillText((cells * CELL) + ' m', x + len, y - 6);
+    ctx.restore();
+  }
+  function northArrow(ctx, pal, x, y) {
+    ctx.save();
+    ctx.strokeStyle = pal.ink; ctx.fillStyle = pal.ink; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, y + 30); ctx.lineTo(x, y + 6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 6, y + 14); ctx.lineTo(x, y + 10); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 6, y + 14); ctx.lineTo(x, y + 10); ctx.closePath(); ctx.stroke();
+    ctx.font = '600 13px ' + pal.fontDisplay; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('N', x, y + 32);
+    ctx.restore();
+  }
+
+  // ---------- notes, legend
+  function fmtMin(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
+  function renderNotes(cave, pal) {
+    var st = cave.stats;
+    var rows = [
+      ['Estimated swim time', cave.estimatedSwimMinutes.toFixed(1) + ' min', true],
+      ['  main line / side trips', fmtMin(st.mainPathSeconds) + ' / ' + fmtMin(st.exploreSeconds)],
+      ['Rope on main line', cave.ropeLengthM + ' m', true],
+      ['Bottom depth', st.bottomDepthM + ' m'],
+      ['Branches', String(st.branches)],
+      ['  loops that reconnect', String(st.loops)],
+      ['  dead ends (treasure)', st.deadEnds + ' (' + st.treasureDeadEnds + ')'],
+      ['Air pockets (main line)', st.airPockets + ' (' + st.airPocketsMain + ')'],
+      ['  dry chambers', String(st.dryChambers)],
+      ['Longest swim without air', fmtMin(st.maxAirGapSeconds)],
+      ['Squeezes', String(st.squeezes)],
+      ['Landmark rooms', String(st.landmarks)],
+      ['Pieces / grid cells', st.pieces + ' / ' + st.cells],
+      ['Checksum (FNV-1a)', '0x' + cave.checksumHex]
+    ];
+    var tb = document.getElementById('stats-body');
+    tb.textContent = '';
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var th = document.createElement('th'); th.scope = 'row'; th.textContent = r[0].trim();
+      if (r[0].charAt(0) === ' ') th.style.paddingLeft = '24px';
+      var td = document.createElement('td'); td.textContent = r[1]; if (r[2]) td.className = 'big';
+      tr.appendChild(th); tr.appendChild(td); tb.appendChild(tr);
+    });
+    var bar = document.getElementById('zonebar'); bar.textContent = '';
+    var total = st.zoneSeconds.reduce(function (a, b) { return a + b; }, 0);
+    st.zoneSeconds.forEach(function (v, z) {
+      var sp = document.createElement('span'); sp.style.width = (v / total * 100) + '%'; sp.style.background = pal.zones[z];
+      sp.title = C.ZONE_NAMES[z] + ': ' + fmtMin(v); bar.appendChild(sp);
+    });
+    document.getElementById('zonebar-cap').textContent = 'Main line time by zone: ' + st.zoneSeconds.map(function (v) { return Math.round(v / 60); }).join(' / ') + ' min';
+    document.getElementById('diff-pill').innerHTML = '';
+    var pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = cave.difficulty;
+    document.getElementById('diff-pill').appendChild(pill);
+    document.getElementById('tb-seed').textContent = String(cave.seed);
+    document.getElementById('tb-arch').textContent = cave.archetype;
+    document.getElementById('tb-sum').textContent = '0x' + cave.checksumHex;
+    var lmNames = cave.pieces.filter(function (p) { return p.type === 'landmark'; }).map(function (p) {
+      return (C.LANDMARK_NAMES[p.landmarkId] || 'Landmark room ' + (p.landmarkId + 1)) + ' (' + C.ZONE_NAMES[p.zone] + ')';
+    });
+    document.getElementById('foot').textContent = 'Generator v' + cave.version + ', ' + cave.attempts + ' attempt' + (cave.attempts > 1 ? 's' : '') +
+      '. Modifiers: ' + (cave.modifiers.length ? cave.modifiers.join(', ') : 'none') + '. Landmarks: ' + lmNames.join('; ') + '.';
+  }
+  function renderLegend(pal) {
+    var zl = document.getElementById('legend-zones'); zl.textContent = '';
+    for (var z = 0; z < 5; z++) {
+      var li = document.createElement('li');
+      var sw = document.createElement('span'); sw.className = 'swatch';
+      sw.style.background = alpha(pal.zones[z], 0.3); sw.style.borderColor = pal.zones[z];
+      var t = document.createElement('span');
+      t.innerHTML = '<b></b> <span class="depth"></span>';
+      t.firstChild.textContent = (z + 1) + ' ' + C.ZONE_NAMES[z];
+      t.lastChild.textContent = ZONE_RANGES[z];
+      li.appendChild(sw); li.appendChild(t); zl.appendChild(li);
+    }
+    var marks = [
+      ['line-main', 'Main line, entrance to bottom'], ['line-branch', 'Side passage'], ['line-loop', 'Loop that reconnects'],
+      ['entrance', 'Entrance pool and rope stake'], ['bottom', 'Bottom chamber'], ['air_pocket', 'Air pocket or dry chamber'],
+      ['squeeze', 'Squeeze'], ['landmark', 'Landmark room'], ['dead_end', 'Dead end'], ['treasure', 'Hidden treasure'],
+      ['current', 'Current'], ['silt_floor', 'Silt floor']
+    ];
+    var ml = document.getElementById('legend-marks'); ml.textContent = '';
+    marks.forEach(function (m) {
+      var li = document.createElement('li');
+      var cv = document.createElement('canvas'); cv.className = 'key'; cv.setAttribute('aria-hidden', 'true');
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = 28 * dpr; cv.height = 18 * dpr;
+      var ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (m[0].indexOf('line-') === 0) {
+        ctx.strokeStyle = m[0] === 'line-main' ? pal.main : m[0] === 'line-loop' ? pal.loop : pal.branch;
+        ctx.lineWidth = m[0] === 'line-main' ? 3.5 : 2;
+        if (m[0] === 'line-loop') ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(2, 9); ctx.lineTo(26, 9); ctx.stroke();
+      } else sym(ctx, m[0], 14, 9, 13, pal);
+      var t = document.createElement('span'); t.textContent = m[1];
+      li.appendChild(cv); li.appendChild(t); ml.appendChild(li);
+    });
+  }
+
+  // ---------- hover readout
+  function describe(p) {
+    var bits = [p.type.replace(/_/g, ' ')];
+    if (p.start) bits = ['entrance pool'];
+    if (p.bottom) bits = ['bottom chamber'];
+    if (p.type === 'landmark') bits.push(C.LANDMARK_NAMES[p.landmarkId] || ('landmark room ' + (p.landmarkId + 1)));
+    if (p.dry) bits.push('dry');
+    if (p.treasure) bits.push('treasure');
+    if (p.collapse) bits.push('collapses (bypass loop)');
+    var depth = p.d * CELL + '-' + (p.d + p.h) * CELL + ' m';
+    return '#' + p.id + ' ' + bits.join(', ') + ' | ' + p.role + ' | ' + depth + ' | ' + C.ZONE_NAMES[p.zone] + ' | shape ' + p.shape + ' rot ' + p.rot * 90 + '° var ' + p.variant + ' | ' + p.cost + ' s';
+  }
+  function pickAt(view, mx, my) {
+    var h = hit[view]; if (!h || !current) return null;
+    var best = null;
+    current.pieces.forEach(function (p) {
+      var x0 = h.X(p.x), x1 = h.X(p.x + p.w), a, b;
+      if (view === 'elev') { a = h.Y(p.d); b = h.Y(p.d + p.h); }
+      else { a = h.Y(p.y + p.l); b = h.Y(p.y); }
+      if (mx >= x0 && mx <= x1 && my >= a && my <= b) {
+        if (!best || (view === 'plan' ? p.d > best.d : p.y < best.y) || (p.role === 'main' && best.role !== 'main')) best = p;
+      }
+    });
+    return best;
+  }
+  ['elev', 'plan'].forEach(function (view) {
+    var cv = document.getElementById(view), out = document.getElementById('read-' + view);
+    cv.addEventListener('pointermove', function (ev) {
+      var r = cv.getBoundingClientRect();
+      var p = pickAt(view, ev.clientX - r.left, ev.clientY - r.top);
+      out.textContent = p ? describe(p) : 'Point at a passage to read it.';
+    });
+    cv.addEventListener('pointerleave', function () { out.textContent = 'Point at a passage to read it.'; });
+  });
+
+  // ---------- run
+  var status = document.getElementById('status');
+  function readOptions() {
+    var mods = [];
+    ['mod-flood', 'mod-silt', 'mod-collapse'].forEach(function (id) { var el = document.getElementById(id); if (el.checked) mods.push(el.value); });
+    var opts = { difficulty: document.getElementById('difficulty').value, modifiers: mods };
+    var a = document.getElementById('archetype').value;
+    if (a) opts.archetype = a;
+    return opts;
+  }
+  function draw() {
+    if (!current) return;
+    var pal = palette();
+    drawElevation(current, pal);
+    drawPlan(current, pal);
+    renderNotes(current, pal);
+    renderLegend(pal);
+  }
+  function run() {
+    var raw = document.getElementById('seed').value.trim();
+    if (!/^\d{1,10}$/.test(raw) || Number(raw) > 4294967295) {
+      status.textContent = 'Seed must be a whole number from 0 to 4294967295.';
+      return;
+    }
+    var t0 = performance.now();
+    var cave = G.generate(Number(raw), readOptions());
+    var ms = performance.now() - t0;
+    if (!cave.ok) { status.textContent = 'Seed ' + raw + ' did not produce a valid cave in ' + cave.attempts + ' attempts. Try another seed.'; return; }
+    current = cave;
+    status.textContent = 'Generated in ' + ms.toFixed(1) + ' ms. Generate the same seed again and the checksum stays 0x' + cave.checksumHex + '.';
+    draw();
+  }
+  document.getElementById('controls').addEventListener('submit', function (ev) { ev.preventDefault(); run(); });
+  document.getElementById('newseed').addEventListener('click', function () {
+    var a = new Uint32Array(1);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a); else a[0] = (Math.random() * 4294967296) >>> 0;
+    document.getElementById('seed').value = String(a[0]);
+    run();
+  });
+  ['difficulty', 'archetype', 'mod-flood', 'mod-silt', 'mod-collapse'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', run);
+  });
+  var rt = 0;
+  window.addEventListener('resize', function () { cancelAnimationFrame(rt); rt = requestAnimationFrame(draw); });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', draw);
+  }
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+  run();
+})();
+</script>
