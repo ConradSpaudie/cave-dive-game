@@ -112,7 +112,7 @@ Everything happens in the world, not in menus, except the loadout screen.
 | 2. Loadout | Locker Shack | Opens the loadout screen: tanks (Light / Standard / Heavy), mask modules, lantern, consumables, logbook and tools. Your last loadout is remembered. |
 | 3. Contract (optional) | Contract Board | Look at the board, pick one of 3 contracts or none. Shows the weekly seed if the host wants to play it. |
 | 4. Difficulty | Chalkboard on the platform | Host taps one: **Easy** (about 15 min, zones 1 to 3, 0.6x Cash), **Standard** (30 to 45 min, all 5 zones, 1.0x), **Deep** (45 to 60+ min, more modifiers, 1.4x Cash). |
-| 5. Saboteur toggle | Chalkboard, below difficulty | Host only. Greyed out unless exactly 4 players are present. Off by default. Rules in [[Saboteur Mode]]. |
+| 5. Saboteur toggle | Chalkboard, below difficulty | Host only. Greyed out unless exactly 4 players are present and the host has reached the bottom once (unlock pacing in [[Run Variety System]]). Off by default. Rules in [[Saboteur Mode]]. |
 | 6. Rope order | 4 painted footprints on the platform | Stand on a footprint to claim a position: 1 Leader, 2 Second, 3 Third, 4 Last. Two players fighting over Leader is the intended chaos; Marv says "Rock paper scissors. Hurry." after 10 s. |
 | 7. Clip in | Rope Stake | When everyone is on a footprint, the host pulls the stake lever. Everyone clips on in order (a 2 s animation), Marv says a line, 3, 2, 1, and everyone jumps or gets shoved in. |
 
