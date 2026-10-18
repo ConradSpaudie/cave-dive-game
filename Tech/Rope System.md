@@ -23,7 +23,7 @@ What real cave divers do is the answer: they lay a **guideline**. The line is ti
 The rope is stored as a list of points. The chain is: Stake, then the last diver, then the third, the second, and the leader (in the order the team picks).
 
 - **Stake span** (stake to last diver): a polyline of **bend points**. Every tick the server does a thin sphere sweep from the last bend point to the diver. If rock blocks it, a new bend point is added at the corner (the rope "wraps" around the rock). If the diver can see the bend point before the last one again, the last bend point is removed (the rope "unwraps"). This is the classic grappling-hook wrap algorithm, used in 3D.
-- **Player spans** (diver to diver): the same wrapping logic, but each span has a **maximum length** (start with about 6 to 10 m, tune in playtests).
+- **Player spans** (diver to diver): the same wrapping logic, but each span has a **maximum length** (start at 8 m as in [[Proposed Answers]] #16, tune between 6 and 10 m in playtests).
 - **Tension:** when a player span is longer than its maximum, both divers feel a **soft spring pull** along the rope toward each other. Soft spring, never a hard locked constraint. This is what makes being dragged by a current, or dragging a teammate, physical and funny.
 - **Stored in one actor:** `ARopeManager` (C++), always relevant to all players. Bend points live in a replicated array (use `FFastArraySerializer` so adding a point only sends that point). A run with several hundred bend points is still only a few kilobytes.
 - **Late joiners** automatically receive the whole array when they connect, so a player joining mid-dive spawns at the stake and literally follows the rope down (see [[Multiplayer, Steam and Voice]]).

@@ -43,6 +43,7 @@ Why: PEAK's comedy comes from physics plus voice chat plus being stuck together.
 ## Saboteur
 20. Always on or setting: **A lobby setting, off by default.** Why: it changes the game a lot; friends should opt in.
 21. Who knows: **The saboteur knows from the start. Others know a saboteur might exist (25% chance per run) but not who.** Why: the "maybe there isn't one" doubt makes accusations funnier.
+   Note: your answer 16 in [[Answers Round 1]] says one player *is* the saboteur in 4-player games. 25% (and #20's "off by default") changes that, and 25% may be too low. Your call.
 22. Saboteur powers: quietly unclip someone, kick up silt on purpose, "accidentally" drain shared air, lie about directions, drop a waypoint in the wrong place. No direct killing.
 23. Catching them: **A "tie up" action** when two players grab the same person for 3 seconds: the suspect is clipped to the back of the rope and can't use tools. Wrong accusation costs air.
 24. Saboteur win: **Everyone else runs out of air or the team fails to reach the bottom.** The saboteur gets bonus money if they survive.
@@ -94,6 +95,7 @@ Why: PEAK's comedy comes from physics plus voice chat plus being stuck together.
 
 ## Business and brand
 51. Monetization: **Free game plus paid cosmetic packs and a Supporter Pack, no ads.** See [[Monetization]].
+   Note: your answer 80 in [[Answers Round 1]] said you wanted revenue from ads. This proposal drops ads; it only stands if you agree.
 52. Game name ideas: **Silt**, **Line Out**, **Tied Under**, **Breathe Down**, **Sump** (a "sump" is a flooded cave passage). Top pick: **Tied Under**, since it says co-op, rope, and underwater in two words.
 53. Studio name ideas: **Bubble Line Games**, **Deep End Studio**, **Bad Buoyancy**. Top pick: **Bad Buoyancy**, funny and on theme.
 54. Instagram: **only you can answer the handle.** Proposed cadence: one devlog post per week, starting with Phase 1 footage.

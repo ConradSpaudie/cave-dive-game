@@ -29,6 +29,8 @@ Marv's personality and the camp are in [[Hub Design]]. Mechanics come from [[Mov
 ---
 
 ## 3. Tutorial steps (solo version)
+Note: [[Hub Design]] only has a 4 m deep Practice Pool in the main sinkhole, so this 25 m practice cave would be a separate handmade level next to camp. Confirm which one you want.
+
 The practice sinkhole is a small handmade cave, about 25 m deep, with a sunlit entrance, one dark bend, one silt room, one squeeze, a small current, and an air pocket. Kevin the training dummy plays the teammate.
 
 | # | Mechanic | What the player does | Marv says (example) | The joke | Time |

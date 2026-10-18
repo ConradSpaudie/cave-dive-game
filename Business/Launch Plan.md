@@ -18,7 +18,7 @@ If the Roadmap slips, slide every date by the same amount. The one rule that nev
 
 ## What made PEAK spread (and what to copy)
 
-PEAK (Aggro Crab and Landfall, June 16, 2025) was built in about a month at a game jam in Korea, and its teaser and Steam page went live only about 4 days before launch. It launched with 29,384 wishlists, then sold about 100,000 copies on day one, over 1 million in the first week, 4.5 million in under a month, and over 10 million in 2025. There was no big media campaign: it spread through streamers and clips on TikTok and YouTube.
+PEAK (Aggro Crab and Landfall, June 16, 2025) started as a month-long jam-style sprint in Seoul, South Korea (then a few more months of work), and its teaser and Steam page went live only about 4 days before launch. It launched with 29,384 wishlists, then sold about 100,000 copies on day one, over 1 million in the first week, 4.5 million in under a month, and over 10 million by mid-August 2025. There was no big media campaign: it spread through streamers and clips on TikTok and YouTube.
 
 | What happened | Why it worked | Copy it? | How we copy it |
 |---|---|---|---|
@@ -26,13 +26,13 @@ PEAK (Aggro Crab and Landfall, June 16, 2025) was built in about a month at a ga
 | Proximity voice chat | The funny part is the screaming, not the graphics | **Yes** | Muffled underwater voice that goes crystal clear in air pockets. Ship this in Phase 2. |
 | One stamina bar runs the core loop | Simple rule, instantly readable on stream | **Yes** | Air is our one bar. Viewers must understand it in 2 seconds. |
 | "What you do" plus "who you are" hook (climb a mountain, lost scouts) | Easy to explain in one sentence | **Yes** | "Broke dive-school dropouts, tied together by one rope, mapping a cave nobody else will dive" |
-| Cheap price ($8, $5 launch week) | No friction for a whole friend group to buy | **Better: we're free** | Free means a group of 4 never has to convince the 4th friend to pay. Content Warning (Landfall) went free for its first 24 hours, gave away about 6 million copies and still sold 700,000+ after. |
+| Cheap price ($8, $5 launch week) | No friction for a whole friend group to buy | **Better: we're free** | Free means a group of 4 never has to convince the 4th friend to pay. Content Warning (Landfall) went free for its first 24 hours, gave away about 6 million copies and still sold 700,000+ in the week after. |
 | Procedural mountain that changes daily | Streamers can play it again and again | **Yes** | New procedural cave every run (Pillar 4) |
 | Steam page only 4 days before launch | Landfall and Aggro Crab already had big audiences | **No** | We have no audience. We need months of wishlists and followers first. |
 | Influencers playing and having fun was "a giant part of the sales surge" | Viewers watch, then want to play with their own friends | **Yes** | Streamer outreach plan below, and Conrad plays his own game on camera with friends |
 | Kept a "game jam" rough feel | Charm beats polish in this genre | **Partly** | Our hook is photoreal (Pillar 2), but the physics and chaos should stay goofy |
 
-Other friendslop hits point the same way. Super Battle Golf ($8) passed 500,000 units in 9 days on the back of streamers who came back 5 to 6 times. Roadside Research's demo pulled 903,000 players with a median playtime of 1h12m. The lesson every time: **an instantly understandable, stream-friendly hook beats a deep game with a complicated pitch.** And the genre isn't full: combined friendslop players hit about 366,000 in June 2026, and games well below the top spot still sell hundreds of thousands of copies.
+Other friendslop hits reportedly point the same way. Super Battle Golf ($8) reportedly passed 500,000 units in 9 days on the back of streamers who came back 5 to 6 times. Roadside Research's demo reportedly pulled 903,000 players with a median playtime of 1h12m. The lesson every time: **an instantly understandable, stream-friendly hook beats a deep game with a complicated pitch.** And the genre isn't full: combined friendslop players reportedly hit about 366,000 in June 2026, and games well below the top spot still sell hundreds of thousands of copies.
 
 ---
 
@@ -40,7 +40,7 @@ Other friendslop hits point the same way. Super Battle Golf ($8) passed 500,000 
 
 | Stage | Roadmap phase | Target dates | Marketing milestone | Goal at end of stage |
 |---|---|---|---|---|
-| A. Build in public | Phase 0 to 2 (weeks 1 to 12) | Oct 19, 2026 to Jan 10, 2027 | 3 posts a week, devlog #1 at end of Phase 1 | 1,000 followers across Instagram and TikTok |
+| A. Build in public | Phase 0 to 2 (weeks 1 to 12) | Oct 19, 2026 to Jan 10, 2027 | 1 devlog post a week minimum (3 as a stretch), devlog #1 at end of Phase 1 | 1,000 followers across Instagram and TikTok |
 | B. Steam page live | End of Phase 2 | Mid January 2027 | Coming Soon page, teaser trailer, Discord opens | 500 wishlists in the first month |
 | C. Grow the page | Phase 3 to 4 (weeks 13 to 28) | Jan to early May 2027 | Weekly devlogs, monthly "big" update video, Curator Connect test | 2,000 wishlists, 150 Discord members |
 | D. Steam Playtest | Phase 5 | May to August 2027 | Open Playtest signups, gameplay trailer, first streamer contacts | 5,000 wishlists, 500 Discord members |
@@ -52,7 +52,7 @@ Dates are targets for 10 hours a week. If a phase takes longer, everything after
 ---
 
 ## Stage A: Build in public (now to Phase 2)
-- Follow the [[Content Calendar]]. 3 posts a week, same video on Instagram Reels and TikTok.
+- Follow the [[Content Calendar]]. At least 1 devlog post a week (3 when you can), same video on Instagram Reels and TikTok.
 - Grab the handles now, even before the name is final: Instagram, TikTok, YouTube (for Shorts and longer devlogs), and a dedicated Gmail for the studio. Use the same handle everywhere.
 - Every post's call to action is "follow" until the Steam page exists. After that, it's "wishlist, link in bio."
 - Save every funny clip from Phase 2 testing with Tyrus. These become the teaser.
@@ -61,7 +61,7 @@ Dates are targets for 10 hours a week. If a phase takes longer, everything after
 Zukowski's advice is to get a page up as early as possible because wishlists don't really age, but only once the art style is settled and visible. For us, that's when the photoreal tunnel and the rope co-op both exist on video, which is the end of Phase 2.
 
 **Before you pay:**
-- Steamworks needs a legal adult to sign the agreement and handle the bank and tax details. Plan on a parent setting up the Steamworks account with you.
+- Steamworks needs the legal name, bank account and tax details of whoever signs the Steam Distribution Agreement. Valve's docs don't state a minimum age, but contracts and bank accounts usually need someone 18+, so plan on a parent setting up the Steamworks account with you.
 - Pay the **$100 Steam Direct fee** (the only real cost in this plan). It's paid back to you once the game earns $1,000 in Steam revenue, which for a free game means cosmetic sales.
 - Leave about a month between paying and wanting the page public: the store page and later builds are reviewed by Valve.
 
@@ -106,7 +106,7 @@ Why 7,000: community tracking puts the Popular Upcoming entry bar near 7,000 wis
 
 ## Stage E: Steam Next Fest (October 2027)
 - **Rules:** a game can join only one Next Fest, the store page must be public, a playable demo must be live when the fest starts, and the game can't release before the fest ends.
-- **Why October 2027 and not June 2027:** June's registration closes April 25, 2027 and the demo is due by late May, which is the middle of Phase 4. Too early. October 2027 dates aren't announced yet. Based on October 2026 (registration closed August 31, demo and page due September 14), plan for **registration by late August 2027 and a finished demo by early September 2027.**
+- **Why October 2027 and not June 2027:** June 2027's fest runs June 14 to 21; registration reportedly closes around April 25, 2027 and the demo is due by late May, which is the middle of Phase 4. Too early. October 2027 dates aren't announced yet. Based on October 2026 (registration closed August 31, demo and page due September 14), plan for **registration by late August 2027 and a finished demo by early September 2027.**
 - **The demo:** yes, even though the full game is free, because Next Fest only features demos. Make it the first two depth zones with a fixed cave seed, 30 to 60 minutes long, ending on a cliffhanger (the first glimpse of something huge below). Streamers prefer a 30 to 90 minute slice.
 - **During the fest:** livestream yourself playing with friends every day, reply to every Discord message, post a daily Reel or TikTok with the best stranger clip.
 

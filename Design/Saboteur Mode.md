@@ -5,6 +5,8 @@
 ## The short version
 In 4-player runs, the host can turn on Saboteur Mode. Each run there is a **25% chance** one random player is secretly the saboteur. Nobody but the saboteur knows if one exists. The saboteur has six "accident" abilities that make the dive go wrong but can never directly kill. The team can tie up a suspect, but a wrong accusation costs air. The saboteur wins if the team fails to reach the bottom.
 
+Note: Conrad's answer 16 in [[Answers Round 1]] says that in 4-player games one player *is* secretly the saboteur. The 25% chance per run and "off by default" below go against that and may be too low to feel like a real mode (3 of 4 runs have no saboteur). Conrad decides; 100% or 50% are the obvious alternatives.
+
 The goal is a funnier dive, not a meaner one. Every ability should be deniable ("that wasn't me, I swear, it was the crab").
 
 ---

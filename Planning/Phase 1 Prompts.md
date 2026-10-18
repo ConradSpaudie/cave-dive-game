@@ -174,10 +174,10 @@ Read CLAUDE.md, then from the vault: Design/Diving Systems.md (gear failure: fla
 
 Fill in UDiveFlashlightComponent in C++:
 
-1. A spotlight attached near the right hand / chest, aimed with the camera but with a slight smoothed lag (springy follow), so fast turns sweep the beam a little behind your view.
+1. A spotlight attached to the left hand (a Goodman handle light, per Design/Art Direction.md), aimed with the camera but with a slight smoothed lag (springy follow), so fast turns sweep the beam a little behind your view.
 2. Realistic falloff: inverse square falloff on, attenuation radius around 15 to 25 m, tight inner cone, soft outer cone, volumetric scattering intensity so the beam is visible in the water fog. Light shadows on so corners cut the light hard. Starting values tuned for Lumen on Mac; tell me which settings cost the most performance.
 3. Toggle on F with a click sound hook (USoundBase slot).
-4. Battery: drains over time (tunable, default about 20 minutes), flickers in the last 10 percent, dies at 0. Broadcast OnBatteryChanged and OnFlashlightDied delegates. Add a tiny dim "backup glow" option off by default.
+4. Battery: drains over time (tunable, default about 8 minutes, the Level 1 battery in Design/Economy and Progression.md), flickers in the last 10 percent, dies at 0. Broadcast OnBatteryChanged and OnFlashlightDied delegates. Add a tiny dim "backup glow" option off by default.
 5. A faint ambient falloff around the player: optional very weak, short-radius point light so your own hands are barely readable in total darkness, with a toggle so I can compare.
 6. Debug lines: on/off, battery percent, light settings.
 
@@ -225,7 +225,7 @@ Read CLAUDE.md, then from the vault: Design/Diving Systems.md (Air, Stamina, Pan
 
 Fill in UDiveAirComponent in C++:
 
-1. Model: one tank for Phase 1 with tank air in liters at surface pressure (tunable, default sized so a calm dive lasts about 8 minutes of real time) and current lung volume (liters).
+1. Model: one tank for Phase 1 with tank air in liters at surface pressure (tunable, default sized so a calm dive lasts about 10 minutes of real time, matching one tank in Proposed Answers #34) and current lung volume (liters).
 2. A breathing cycle state machine: Inhale, Hold, Exhale, Pause. Breath rate and depth rise with exertion (swim speed and kicks from UDiveMovementComponent). Each inhale draws from the tank. Leave hooks for depth and panic multipliers from Diving Systems but keep them at 1.0 for now.
 3. Delegates: OnInhaleStarted, OnExhaleStarted, OnAirChanged(percent), OnLowAir (at 25 percent), OnCriticalAir (10 percent), OnOutOfAir. On exhale, also provide a hook to spawn a bubble burst effect at the regulator position.
 4. Audio hooks: sound slots for inhale and exhale (arrays so it picks a random variation each breath, never the same twice in a row), played from the regulator position, with volume and pitch nudged by exertion. Breathing gets faster and harsher on low air.

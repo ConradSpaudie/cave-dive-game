@@ -17,7 +17,7 @@ Weeks 1 to 3 have no game to show, so **the story is the content**: a teen with 
 | 4. Real cave diving | Quick facts about real cave diving that the game uses (silt-outs, buoyancy, line rules) | 15% |
 
 ## Posting cadence
-- **3 posts a week: Tuesday, Thursday, Sunday.** Same video goes to TikTok and Instagram Reels the same day.
+- **Minimum 1 devlog post a week** (the Tuesday slot), as in [[Proposed Answers]] #54. **Stretch goal: 3 posts a week (Tuesday, Thursday, Sunday)** using the extra posts below when you have time. Same video goes to TikTok and Instagram Reels the same day.
 - Post in the evening, Pacific time (6 to 8 pm). Check your own analytics after week 4 and move it if your followers are online at another time.
 - **1 story a day on Instagram** is a bonus, not required: a screenshot, a poll, a "working on it" clip.
 - Budget about **2 hours a week** on content, separate from the 10 hours of building: film during dev sessions, edit everything in one sitting on Saturday.

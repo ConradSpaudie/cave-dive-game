@@ -23,7 +23,7 @@ Technical plan for frame-rate targets, scalability and whether to ship on Mac. B
 | Rendering | TSR from about 50 to 60% resolution, Lumen Lite or low Lumen, low volumetric fog | TSR from about 67%, Lumen software ray tracing, full volumetric fog |
 | Extras | No MegaLights | MegaLights only at Epic on RTX 20 series and newer |
 
-The RTX 3060 is one of the two most common GPUs on Steam (June 2026 survey), so "High at 60 fps on a 3060" is the right headline target. RAM: 32 GB is now the most common Steam configuration, but plan for 16 GB to work.
+The RTX 3060 is reportedly one of the two most common GPUs on Steam (June 2026 survey), so "High at 60 fps on a 3060" is the right headline target. RAM: 32 GB is reportedly now the most common Steam configuration, but plan for 16 GB to work.
 
 ### Starting frame budget (60 fps on an RTX 3060, rough guide to tune against)
 
@@ -68,6 +68,8 @@ Use Unreal's built-in scalability groups through `GameUserSettings`, exposed in 
 ### Recommendation on keeping Mac support
 
 **Keep Mac as the place you build the game; ship Windows only at launch; decide on a Mac release after the Playtest.** Concretely:
+
+Note: this conflicts with Conrad's answer 11 in [[Answers Round 1]] ("Mac support: yes, if the Mac can handle it"). This is a proposal only; Conrad decides whether Mac ships at launch.
 1. First, confirm the dev Mac's chip and RAM (still an open question in [[Engine, Hardware and Platforms]]). If it is an **M1**, Nanite will not render in the editor and the photoreal look cannot be judged on it; testing on a Windows PC becomes essential, not optional. If it has **8 GB RAM**, UE5 photoreal work on it is not realistic.
 2. Store page lists Windows only at first.
 3. After the free Playtest, ship Mac only if **all three** are true: an M2 or newer Mac runs Medium at 30 fps or better, players are actually asking for it, and the $99 per year Apple fee is worth it.
@@ -91,7 +93,7 @@ Use Unreal's built-in scalability groups through `GameUserSettings`, exposed in 
 
 1. Find out the Mac's exact chip and RAM (Apple menu, About This Mac) and write it in [[Engine, Hardware and Platforms]].
 2. In the "Feel" prototype tunnel ([[Roadmap]] phase 1), turn on `stat unit` and `stat gpu` and screenshot the numbers with one flashlight, volumetric fog and a silt burst.
-3. Make the first Windows package on a borrowed Windows PC and record the same numbers. These two screenshots become the performance baseline.
+3. When you have the borrowed Windows PC (planned for Phase 5 in [[Proposed Answers]] #3, sooner if the Mac turns out to be an M1), make the first Windows package and record the same numbers. These two screenshots become the performance baseline.
 
 Related: [[Engine, Hardware and Platforms]], [[Water, Light and Silt Visuals]], [[Procedural Cave Generation]], [[Multiplayer, Steam and Voice]].
 

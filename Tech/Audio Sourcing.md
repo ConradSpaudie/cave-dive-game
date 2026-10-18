@@ -20,8 +20,8 @@ How to get every sound in the game for $0 (or close), legally, and how to make i
 
 | Source | License | Commercial game OK? | Credit needed? | Best for THIS game | Gotchas |
 |--------|---------|--------------------|----------------|--------------------|---------|
-| **Sonniss GDC Game Audio Bundle** (gdc.sonniss.com) | Royalty-free, unlimited projects, for life | Yes | No | Water, rock impacts, creature layers, ambiences, UI. The 2026 bundle is 7.47 GB (347 WAV files); older yearly bundles are on the archive page. | Can't redistribute the raw files (keep them out of a public repo). Using them to train AI is prohibited. |
-| **Freesound** (freesound.org), **CC0 sounds** | Public domain | Yes | No | Bubbles, water drips, splashes, cave ambience, rock creaks. About 52% of 730,000+ sounds are CC0. | License is set per sound. Filter by license every search. |
+| **Sonniss GDC Game Audio Bundle** (gdc.sonniss.com) | Royalty-free, unlimited projects, for life | Yes | No | Water, rock impacts, creature layers, ambiences, UI. The 2026 bundle is 7.47 GB+; older yearly bundles are on the archive page. | Can't redistribute the raw files (keep them out of a public repo). Using them to train AI is prohibited. |
+| **Freesound** (freesound.org), **CC0 sounds** | Public domain | Yes | No | Bubbles, water drips, splashes, cave ambience, rock creaks. Reportedly about half of its 737,000+ sounds are CC0. | License is set per sound. Filter by license every search. |
 | **Freesound, CC-BY sounds** | Attribution | Yes | **Yes**: author, sound name, link, license | Same as above when the CC0 option is worse | Log every one in the credits file. |
 | **Freesound, CC-BY-NC sounds** | Non-commercial | **No** | n/a | Nothing | A Steam game is commercial. Skip. |
 | **Pixabay** (pixabay.com/sound-effects) | Pixabay Content License | Yes | No | Fillers: splashes, UI blips, ambience beds | Can't resell files on their own. Some uploads may be stolen, so prefer Sonniss and Freesound CC0, and keep proof of where you got it. |
@@ -239,7 +239,7 @@ Source key: **Rec** = record it yourself, **Son** = Sonniss GDC bundles, **Son$*
 | Radio crackle (optional, if voice ever goes "through the rope") | Voice submix |
 
 ### Music (open question in [[Audio]])
-Recommendation: **mostly ambience**, with short music stingers for discoveries, the halocline, and the ending. Music should never cover breathing.
+Recommendation (matches [[Proposed Answers]] #50): **mostly ambience**, with music only in the hub and at the bottom chamber reveal. Music should never cover breathing.
 
 ---
 

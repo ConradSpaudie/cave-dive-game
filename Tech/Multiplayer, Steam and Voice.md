@@ -57,7 +57,7 @@ Key Unreal building blocks: `GameMode` (rules, server only), `GameState` (shared
 ### Other voice options considered
 
 - **EOS Voice (Epic Online Services):** free, but adds a whole second online service to set up and you handle positional audio yourself. Not needed while built-in voice works.
-- **Vivox:** free up to 5,000 peak concurrent users, then $2,000 per extra 5,000. Not needed.
+- **Vivox:** free for indies up to 5,000 peak concurrent users; pricing above that is by quote (older listings said about $2,000 per extra 5,000). Not needed.
 - If built-in attenuation turns out to be unworkable, a paid Fab voice plugin is the fallback.
 
 ### Steam costs and business setup

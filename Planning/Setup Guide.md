@@ -2,7 +2,7 @@
 
 Goal: go from zero to "a blank UE5 C++ first-person project opens on my Mac and lives in its own GitHub repo." This is Phase 0 of the [[Roadmap]]. Background on why each step exists is in [[Engine, Hardware and Platforms]].
 
-Checked October 2026. The current engine is **Unreal Engine 5.8** (latest hotfix 5.8.3, with 5.8.4 coming). Epic says 5.8 is probably the last 5.x release; Unreal Engine 6 early access is expected around late 2027, so 5.8 is the version to build on.
+Checked October 2026. The current engine is **Unreal Engine 5.8** (latest hotfix 5.8.3, released September 22, 2026, with 5.8.4 expected). Epic calls 5.8 the last planned major UE5 release (a 5.9 is still possible); Unreal Engine 6 Early Access is targeted for the end of 2027, so 5.8 is the version to build on.
 
 **Total time:** about 1 to 2 evenings of hands-on work, plus several hours of downloads you can leave running.
 
@@ -46,7 +46,7 @@ What it means for you:
 - **Do not upgrade macOS during this setup.** A macOS update can break the Xcode version Unreal needs.
 
 ## Step 2: Free up space on the internal drive safely (20 to 45 min)
-You have about 7 GB free. Unreal itself goes on the SSD, but macOS needs breathing room (at least 20 GB free) for memory swap and caches, and Unreal still writes some files to your home folder. Aim for 20 GB free.
+You have about 7 GB free (measured on Oct 17; you estimated 9). Unreal itself goes on the SSD, but macOS needs breathing room (at least 20 GB free) for memory swap and caches, and Unreal still writes some files to your home folder. Aim for 20 GB free.
 
 **See what is using space:**
 1. Apple menu > **System Settings** > **General** > **Storage**. Wait for the bar to finish calculating.
@@ -119,7 +119,7 @@ The newest Xcode in the App Store is **not** the one you want. Unreal needs a sp
 - Epic's UE 5.8 Mac requirements: **minimum Xcode 26.0, recommended Xcode 26.1.1**, and "Xcode 26.4 is not compatible."
 - Xcode 26.1.1 runs on **macOS Sequoia 15.6 up to macOS Tahoe 26.x**.
 - So: if your Mac is on **macOS 15.6 to 26.x**, install **Xcode 26.1.1**. This is the default path.
-- **If your Mac is already on macOS 27:** Xcode 26.1.1 is not supported on macOS 27. Epic staff say **Xcode 26.6** works for UE 5.8 on macOS 27. Xcode 27 (current App Store version) can build the editor but cannot package a Mac game build until the UE 5.8.4 hotfix. Install Xcode 26.6 instead, and update this note if 5.8.4 is out.
+- **If your Mac is already on macOS 27:** Xcode 26.1.1 is not supported on macOS 27. Forum reports (including Epic staff) say **Xcode 26.6** works for UE 5.8 on macOS 27, and that Xcode 27 (current App Store version) can build the editor but reportedly cannot package a Mac game build until the UE 5.8.4 hotfix. Install Xcode 26.6 instead, and update this note if 5.8.4 is out.
 
 **Install it:**
 1. Go to `developer.apple.com/download/all` and **sign in with your Apple ID** (free; accept the developer agreement if asked).

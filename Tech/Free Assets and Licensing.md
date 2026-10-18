@@ -41,7 +41,7 @@ Builds on [[Engine, Hardware and Platforms]] and serves [[Art Direction]].
 | Free for everyone? | **No, not anymore.** Megascans was free to everyone only until **December 31, 2024**. Since 2025 most Megascans cost money on Fab. |
 | Anything still free? | Yes. Epic kept a set of Megascans free on Fab (one 2026 guide counts 1,500+ free Megascans assets). Search Fab with the "Free" filter plus "Megascans". |
 | Already claimed in 2024? | If you claimed the legacy library before the end of 2024, those assets stay yours under the license you accepted. (If Conrad or Tyrus didn't claim then, assume you don't have it.) |
-| Quixel Bridge | Still around in 2026 but being phased out. New Megascans have been Fab-only since early 2026. Back up anything you download. |
+| Quixel Bridge | Reportedly still around in 2026 but being phased out, with new Megascans going to Fab only. Back up anything you download. |
 
 ### Fab license types
 | License | What it means for us |
@@ -192,7 +192,7 @@ Only when free is clearly the difference between good and bad.
 
 | Item | Rough price | Why | When |
 |------|-------------|-----|------|
-| **External SSD** (already planned) | $60 to $120 | Without it, nothing else matters (see [[Engine, Hardware and Platforms]]) | Now |
+| **External SSD** (already planned) | $150 to $250 (a Samsung T7 1 TB was about $230 in October 2026) | Without it, nothing else matters (see [[Engine, Hardware and Platforms]]) | Now |
 | **A realistic scuba / sidemount gear pack** (Fab) | About $20 to $60 | Gear is our "character design" and it's on screen every second. Free gear models are often low quality or wrong (recreational back-mount, not sidemount). | After the swim prototype works |
 | **A modular cave or rock kit** (Fab, only if free rocks don't stitch well) | About $20 to $80 | Procedural caves need pieces that connect cleanly. Free scans don't. | After testing free rocks in the cave generator |
 | **One good fish pack** | About $15 to $40 | Only if Sketchfab real-fish scans fail | Later |
