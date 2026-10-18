@@ -11,6 +11,9 @@ Everything new is a proposal until you approve it.
 - Tech: [[Swimming and Underwater Movement]], [[Rope System]], [[Procedural Cave Generation]], [[Water, Light and Silt Visuals]], [[Multiplayer, Steam and Voice]], [[Performance and Mac]], [[Free Assets and Licensing]], [[Audio Sourcing]]
 - Business: [[Launch Plan]], [[Content Calendar]]
 
+## Round 2 (after midnight)
+- Playable Swim Feel Test in the browser, a working Cave Generator Lab, and the Unreal C++ starter code in a new private repo (cave-dive-game-unreal). All in [[Prototypes]].
+
 ## Decisions that need you
 1. Check your Mac's chip and RAM (Apple menu > About This Mac). [[Setup Guide]] step 1.
 2. Buy the 1 TB SSD: about $230 (Samsung T7, Oct 2026; range $150 to $250). [[Setup Guide]] step 3.
@@ -34,6 +37,7 @@ Everything new is a proposal until you approve it.
 - Softened to "reportedly": Freesound share, Steam survey, friendslop numbers, Xcode 27 issue.
 
 ## Next 3 actions
+0. Play the Swim Feel Test (10 minutes, headphones) and note the slider values that feel best.
 1. Check chip and RAM, write them in [[Setup Guide]].
 2. Order the SSD.
 3. Reply with the [[Proposed Answers]] numbers you want changed.

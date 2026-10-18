@@ -11,9 +11,10 @@ PEAK, but you're cave diving, tied to your friends by one rope, and the deeper y
 If the game becomes repetitive, it has failed. Every system should be judged against this.
 
 ## Start here (morning of Oct 18)
-1. [[Overnight Summary]]: what got done and what needs your call.
-2. [[Proposed Answers]]: answers to all 54 open questions. Reply with numbers to change.
-3. [[Setup Guide]]: step 1 tells you how to check your Mac's chip and RAM.
+1. [[Prototypes]]: **play the Swim Feel Test first** (link inside), then the Cave Generator Lab.
+2. [[Overnight Summary]]: what got done and what needs your call.
+3. [[Proposed Answers]]: answers to all 54 open questions. Reply with numbers to change.
+4. [[Setup Guide]]: step 1 tells you how to check your Mac's chip and RAM.
 
 ## Vault map
 - [[Game Pillars]]
@@ -57,6 +58,7 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Open Questions]]
   - [[Proposed Answers]]
   - [[Decision Log]]
+- [[Prototypes]]
 - Context
   - [[Answers Round 1]]
   - [[Research So Far]]
