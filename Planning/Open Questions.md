@@ -7,7 +7,7 @@ Answer by number. "You decide" is a valid answer.
 
 ## Blockers (answer these first)
 1. Which Mac chip and how much RAM (Apple menu > About This Mac)?
-2. Okay to buy a 1 TB external SSD (about $60 to $120) for the engine and project?
+2. Okay to buy a 1 TB external SSD (about $150 to $250; flash prices are high in 2026) for the engine and project?
 3. Do you have access to any Windows PC for building and testing the Windows version?
 4. Is Tyrus building with you, playtesting only, or both?
 5. Do you have a GitHub account the repo should live under? Public or private repo?

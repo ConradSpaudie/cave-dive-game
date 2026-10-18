@@ -12,8 +12,8 @@
 ## Blockers to solve before writing any game code
 
 ### 1. Disk space (critical)
-- The Mac has about 9 GB free. Unreal Engine 5 plus Xcode plus a photoreal project needs well over 100 GB. Expect the engine alone to take tens of GB, Xcode another 10 to 40 GB, and high-detail rock assets and build caches to grow fast.
-- Fix: buy a fast external SSD (1 TB, USB-C, roughly $60 to $120) and put the engine and project on it. This is the one purchase worth making.
+- The Mac has about 7 GB free. Unreal Engine 5 plus Xcode plus a photoreal project needs well over 100 GB. Expect the engine alone to take tens of GB, Xcode another 10 to 40 GB, and high-detail rock assets and build caches to grow fast.
+- Fix: buy a fast external SSD (1 TB, USB-C, roughly $150 to $250 in 2026, see [[Setup Guide]]) and put the engine and project on it. This is the one purchase worth making.
 
 ### 2. You cannot build the Windows version on a Mac
 - Unreal can't package a Windows build from macOS; packaging for Windows requires a Windows machine, and packaging for Mac requires a Mac.

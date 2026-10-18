@@ -18,6 +18,7 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Rope and Multiplayer]]
   - [[Cave Generation]]
   - [[Creatures, Flora and Logbook]]
+    - [[Logbook Species List]] (proposal)
   - [[Gear and Customization]]
   - [[HUD, Watch and Waypoints]]
   - [[Progression, Hub and Leaderboards]]
@@ -29,6 +30,8 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Personal Brand and Marketing]]
 - Planning
   - [[Roadmap]]
+  - [[Setup Guide]]
+  - [[Phase 1 Prompts]]
   - [[Open Questions]]
   - [[Decision Log]]
 - Context
