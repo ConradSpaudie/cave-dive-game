@@ -25,6 +25,12 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Audio]]
 - Tech
   - [[Engine, Hardware and Platforms]]
+  - [[Swimming and Underwater Movement]]
+  - [[Rope System]]
+  - [[Procedural Cave Generation]]
+  - [[Water, Light and Silt Visuals]]
+  - [[Multiplayer, Steam and Voice]]
+  - [[Performance and Mac]]
 - Business
   - [[Monetization]]
   - [[Personal Brand and Marketing]]
