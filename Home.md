@@ -30,6 +30,8 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Personal Brand and Marketing]]
 - Planning
   - [[Roadmap]]
+  - [[Setup Guide]]
+  - [[Phase 1 Prompts]]
   - [[Open Questions]]
   - [[Decision Log]]
 - Context
