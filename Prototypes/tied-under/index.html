@@ -1,0 +1,60 @@
+<title>Tied Under</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Share+Tech+Mono&display=swap');
+/* Shared design tokens. Every module's own CSS (injected by its JS file) uses these. */
+:root{
+  color-scheme: dark;
+  --bg:#020507;
+  --hud:#4FF2D0;
+  --hud-dim:rgba(79,242,208,.55);
+  --hud-faint:rgba(79,242,208,.16);
+  --warn:#FFB45C;
+  --bad:#FF5A4F;
+  --ink:#D9EFEA;
+  --ink-dim:#8FA9A4;
+  --card:rgba(4,14,16,.82);
+  --line:rgba(79,242,208,.22);
+  --mono:"Share Tech Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --display:"Chakra Petch","Avenir Next",system-ui,sans-serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --gx:max(16px, env(safe-area-inset-left, 0px));
+  --gr:max(16px, env(safe-area-inset-right, 0px));
+  --gt:max(16px, env(safe-area-inset-top, 0px));
+  --gb:max(16px, env(safe-area-inset-bottom, 0px));
+}
+/* The game is always dark; the light/dark tokens are kept identical on purpose. */
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --bg:#020507; } }
+:root[data-theme="dark"]{ --bg:#020507; }
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+body{background:#020507;overscroll-behavior:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#boot-err{display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:var(--mono);color:var(--warn);background:#020507}
+</style>
+
+<div id="boot-err"></div>
+
+<!-- three.js first, then our files in this order (see CONTRACT.md "Load order") -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/generator.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/cave-sdf.js"></script>
+<script src="js/cave-mat.js"></script>
+<script src="js/cave-dress.js"></script>
+<script src="js/cave.js"></script>
+<script src="js/creatures-lib.js"></script>
+<script src="js/creatures-models.js"></script>
+<script src="js/creatures.js"></script>
+<script src="js/creatures-finds.js"></script>
+<script src="js/player.js"></script>
+<script src="js/player-hands.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/ui-hud.js"></script>
+<script src="js/ui-logbook.js"></script>
+<script src="js/ui-camp.js"></script>
+<script src="js/ui-locker.js"></script>
+<script src="js/ui-wrist.js"></script>
+<script src="js/ui-tutorial.js"></script>
+<script src="js/main.js"></script>
