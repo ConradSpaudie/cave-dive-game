@@ -10,6 +10,11 @@ PEAK, but you're cave diving, tied to your friends by one rope, and the deeper y
 ## The failure condition
 If the game becomes repetitive, it has failed. Every system should be judged against this.
 
+## Start here (morning of Oct 18)
+1. [[Overnight Summary]]: what got done and what needs your call.
+2. [[Proposed Answers]]: answers to all 54 open questions. Reply with numbers to change.
+3. [[Setup Guide]]: step 1 tells you how to check your Mac's chip and RAM.
+
 ## Vault map
 - [[Game Pillars]]
 - Design
@@ -22,6 +27,12 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Gear and Customization]]
   - [[HUD, Watch and Waypoints]]
   - [[Progression, Hub and Leaderboards]]
+    - [[Economy and Progression]] (proposal)
+    - [[Hub Design]] (proposal)
+  - [[Saboteur Mode]] (proposal)
+  - [[Run Variety System]] (proposal)
+  - [[Tutorial Design]] (proposal)
+  - [[Art Direction]] (proposal)
   - [[Audio]]
 - Tech
   - [[Engine, Hardware and Platforms]]
@@ -31,14 +42,19 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Water, Light and Silt Visuals]]
   - [[Multiplayer, Steam and Voice]]
   - [[Performance and Mac]]
+  - [[Free Assets and Licensing]]
+  - [[Audio Sourcing]]
 - Business
   - [[Monetization]]
   - [[Personal Brand and Marketing]]
+  - [[Launch Plan]] (proposal)
+  - [[Content Calendar]] (proposal)
 - Planning
   - [[Roadmap]]
   - [[Setup Guide]]
   - [[Phase 1 Prompts]]
   - [[Open Questions]]
+  - [[Proposed Answers]]
   - [[Decision Log]]
 - Context
   - [[Answers Round 1]]
