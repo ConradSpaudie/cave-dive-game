@@ -123,3 +123,7 @@ Conrad's answers to the first 90 questions, cleaned up from voice typing. Number
 88. Decisions: they'll work it out together.
 89. Playtesters: Conrad and Tyrus, every couple of days or as needed.
 90. Failure condition: the game becomes repetitive.
+
+## Feedback after playing the browser version
+- Oct 18: Wants the cave more realistic if possible. Stalactites and stalagmites were inverted; they must be cones with the point facing down (ceiling) and up (floor). Creatures looked like blobs; wants fully rendered real creatures.
+- Oct 19: Likes the hand movement at normal speed. At sprint (2x) the frog-style stroke felt erratic; wants a rhythm that only speeds up a little. Wants predators added alongside creatures, and a plethora of weapons to choose from at the start (harpoon gun, water gun, etc.) to shoot them down.

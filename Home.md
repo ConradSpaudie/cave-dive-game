@@ -30,6 +30,7 @@ If the game becomes repetitive, it has failed. Every system should be judged aga
   - [[Progression, Hub and Leaderboards]]
     - [[Economy and Progression]] (proposal)
     - [[Hub Design]] (proposal)
+  - [[Predators and Weapons]] (in progress)
   - [[Saboteur Mode]] (proposal)
   - [[Run Variety System]] (proposal)
   - [[Tutorial Design]] (proposal)
