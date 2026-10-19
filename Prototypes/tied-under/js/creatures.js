@@ -26,7 +26,8 @@
   var clamp = U.clamp, lerp = U.lerp, smooth = U.smooth;
 
   /* ------------------------------------------------------------------ */
-  /* Tunables (TODO cfg: ask the lead to move these into TU.cfg.creatures) */
+  /* Tunables. The shared ones live in TU.cfg.creatures (core.js) and   */
+  /* are copied over these defaults at load time.                        */
   /* ------------------------------------------------------------------ */
   var C = {
     activeRadius: 34,      // m, creatures closer than this are simulated and drawn
@@ -45,6 +46,7 @@
     lanternCap: 10,        // lantern brightness cap (sum of species brightness)
     shinyChance: 1 / 200   // chance a spawn is a shiny variant
   };
+  (function () { var cc = TU.cfg.creatures || {}; for (var k in cc) if (typeof cc[k] === 'number') C[k] = cc[k]; })();
 
   /* ------------------------------------------------------------------ */
   /* Species database (logbook entries). Sizes in meters.                */
@@ -59,13 +61,13 @@
       note: 'Livebearing fish of sunlit cenotes. The whole school bolts at once when your light or fins come too close.', move: 'school', place: 'water', groups: 3, group: [7, 11], speed: 0.45, sight: true, cap: 64 }),
     stalag_moss: sp({ id: 'stalag_moss', name: 'Stalag Moss', type: 'Moss', kind: 'flora', zones: [0], behavior: 'harmless', glows: false, brightness: 0, rarity: 'common', sizeM: [0.05, 0.4], colors: [0x3F5428, 0x8FA858], shape: 'stalag_moss',
       note: 'Moss that colonizes lit rock near the entrance. The first thing everyone logs.', move: 'still', place: 'wall', groups: 9, cap: 30 }),
-    cave_crayfish: sp({ id: 'cave_crayfish', name: 'Cave Crayfish', type: 'Crustacean', zones: [0, 1, 2], behavior: 'territorial', dangerous: true, glows: false, brightness: 0, rarity: 'common', sizeM: [0.05, 0.12], colors: [0xEEF0EC, 0xE7C9BC], shape: 'cave_crayfish',
-      note: 'Pale and eyeless. Raises its claws when you hover close, then pinches a glove if you stay.', move: 'crawl', place: 'floor', groups: 4, cap: 16, show: { ext: 1.9, floor: true } }),
+    entrance_crayfish: sp({ id: 'entrance_crayfish', name: 'Entrance Crayfish', type: 'Crustacean', zones: [0, 1, 2], behavior: 'territorial', dangerous: true, glows: false, brightness: 0, rarity: 'common', sizeM: [0.05, 0.12], colors: [0xEEF0EC, 0xE7C9BC], shape: 'cave_crayfish',
+      note: 'A pale crayfish that wanders in from the entrance. Raises its claws when you hover close, then pinches a glove if you stay.', move: 'crawl', place: 'floor', groups: 4, cap: 16, show: { ext: 1.9, floor: true } }),
     blind_cavefish: sp({ id: 'blind_cavefish', name: 'Blind Cavefish', type: 'Fish', zones: [1, 2], behavior: 'harmless', glows: false, brightness: 0, rarity: 'common', sizeM: [0.06, 0.12], colors: [0xE6C3BC, 0xF8EDE6], shape: 'blind_cavefish',
       note: 'Eyeless and pink, it finds food by feel. Curious: it nibbles at fingers and is easy to measure.', move: 'school', place: 'water', groups: 3, group: [6, 10], speed: 0.35, curious: true, cap: 64 }),
     glass_shrimp: sp({ id: 'glass_shrimp', name: 'Glass Shrimp', type: 'Crustacean', zones: [1, 2], behavior: 'skittish', glows: false, brightness: 0, rarity: 'common', sizeM: [0.01, 0.03], colors: [0xE4F2F4, 0xE8D27A], shape: 'glass_shrimp',
       note: 'Tiny see-through cave shrimp. You only notice them when your light catches them at the right angle.', move: 'shrimp', place: 'water', groups: 3, group: [8, 14], speed: 0.18, cap: 64, show: { ext: 1.9 } }),
-    glowworm: sp({ id: 'glowworm', name: 'Starlight Glowworm', type: 'Insect larva', zones: [1, 2, 3], behavior: 'harmless', glows: true, brightness: 2, catchable: true, rarity: 'common', sizeM: [0.01, 0.04], colors: [0x7FE8FF, 0xE8F4F4], glow: 0x7FE8FF, shape: 'glowworm', scaleK: 14,
+    starlight_glowworm: sp({ id: 'starlight_glowworm', name: 'Starlight Glowworm', type: 'Insect larva', zones: [1, 2, 3], behavior: 'harmless', glows: true, brightness: 2, catchable: true, rarity: 'common', sizeM: [0.01, 0.04], colors: [0x7FE8FF, 0xE8F4F4], glow: 0x7FE8FF, shape: 'glowworm', scaleK: 14,
       note: 'Larvae that hang sticky silk lines from dry ceilings. A chamber of them looks like a night sky. They dim when disturbed.', move: 'still', place: 'ceilingDry', groups: 7, cap: 40, show: { ext: 1.1, ceiling: true } }),
     ghost_fire_fungus: sp({ id: 'ghost_fire_fungus', name: 'Ghost Fire Fungus', type: 'Fungus', kind: 'flora', zones: [1, 2, 3], behavior: 'harmless', glows: true, brightness: 2, catchable: true, rarity: 'uncommon', sizeM: [0.01, 0.03], colors: [0xB8D8A0, 0x9BFF6A], glow: 0x9BFF6A, shape: 'ghost_fire_fungus', scaleK: 7,
       note: 'Small mushrooms that glow green on drowned wood. The first good light for the lantern.', move: 'still', place: 'wall', groups: 5, cap: 30, show: { ext: 1.0, floor: true, dy: 0.12, low: true } }),
@@ -79,7 +81,7 @@
       note: 'A scavenger the size of a dinner plate. It slowly crawls toward injured divers. Not dangerous, just unsettling.', move: 'crawl', place: 'floor', groups: 2, speed: 0.04, cap: 8, show: { ext: 1.45, floor: true } }),
     sea_firefly: sp({ id: 'sea_firefly', name: 'Sea Firefly', type: 'Crustacean', zones: [2, 3], behavior: 'skittish', glows: true, brightness: 3, catchable: true, rarity: 'uncommon', sizeM: [0.001, 0.003], colors: [0x2FA8FF, 0x4FF2D0], glow: 0x2FA8FF, shape: 'sea_firefly', scaleK: 2.2,
       note: 'Tiny ostracods that spit blue light when disturbed. Caught as a swarm, they light the lantern well.', move: 'swarm', place: 'water', groups: 3, speed: 0.1, swarmN: 48, cap: 6, show: { swarm: true } }),
-    sulfur_mat: sp({ id: 'sulfur_mat', name: 'Sulfur Bloom Mat', type: 'Bacteria', kind: 'flora', zones: [2, 3], behavior: 'harmless', glows: false, brightness: 0, rarity: 'common', sizeM: [0.2, 2.0], colors: [0xEAE6D8, 0xD8CF9A], shape: 'sulfur_mat',
+    sulfur_bloom_mat: sp({ id: 'sulfur_bloom_mat', name: 'Sulfur Bloom Mat', type: 'Bacteria', kind: 'flora', zones: [2, 3], behavior: 'harmless', glows: false, brightness: 0, rarity: 'common', sizeM: [0.2, 2.0], colors: [0xEAE6D8, 0xD8CF9A], shape: 'sulfur_mat',
       note: 'White bacterial mats like wet cloth. Brush it with a fin and the passage turns into a white cloud.', move: 'still', place: 'floor', groups: 5, cap: 20, show: { ext: 1.1, floor: true } }),
     volt_eel: sp({ id: 'volt_eel', name: 'Volt Eel', type: 'Fish', zones: [2, 3], behavior: 'dangerous', dangerous: true, glows: true, brightness: 0, rarity: 'uncommon', sizeM: [1.0, 2.5], colors: [0x2B2F26, 0xA06E34], glow: 0xBFE8FF, shape: 'volt_eel',
       note: 'Holds the animal voltage record. It crackles with light as a warning, then shocks everything nearby.', move: 'eel', place: 'water', groups: 2, speed: 0.35, cap: 4, show: { ext: 1.0 } }),
@@ -221,10 +223,14 @@
     return best;
   }
   // Ceiling spots in dry air (air pockets and dry chambers), found with raycasts from the cave features.
-  function dryCeilingSpots(rand, n) {
-    var out = [], F = TU.cave.features || {}, srcs = [];
-    (F.airPockets || []).forEach(function (a) { srcs.push({ pos: a.pos, r: a.radius || 6, y: (a.surfaceY != null ? a.surfaceY : a.pos.y) + 0.3 }); });
-    (F.dryChambers || []).forEach(function (d) { srcs.push({ pos: d.pos, r: d.size ? Math.max(d.size.x, d.size.z) * 0.45 : 5, y: d.floorY != null ? d.floorY + 1 : d.pos.y }); });
+  // Dry chambers come first (big dry ceilings, the "night sky"), then air pocket domes. Sources in the
+  // asked depth zone are preferred; if there are none, any dry ceiling will do.
+  function dryCeilingSpots(rand, n, zone) {
+    var out = [], F = TU.cave.features || {}, all = [];
+    (F.dryChambers || []).forEach(function (d) { all.push({ pos: d.pos, r: d.size ? Math.max(d.size.x, d.size.z) * 0.45 : 5, y: d.floorY != null ? d.floorY + 1 : d.pos.y, dry: true }); });
+    (F.airPockets || []).forEach(function (a) { all.push({ pos: a.pos, r: a.radius || 6, y: (a.surfaceY != null ? a.surfaceY : a.pos.y) + 0.3 }); });
+    var srcs = zone == null ? all : all.filter(function (q) { return U.zoneOfDepth(Math.max(0, -q.y)) === zone; });
+    if (!srcs.length) srcs = all;
     for (var i = 0; i < n * 6 && out.length < n && srcs.length; i++) {
       var s = srcs[i % srcs.length], a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * s.r * 0.8;
       var o = new T.Vector3(s.pos.x + Math.cos(a) * d, s.y, s.pos.z + Math.sin(a) * d);
@@ -252,7 +258,7 @@
       zones.forEach(function (zq) {
         var zone = zq[0], spill = zq[0] !== s.zones[0] && !has[s.zones[0]], nG = Math.max(1, Math.round(s.groups * zq[1] * diff));
         if (s.place === 'ceilingDry') {
-          dryCeilingSpots(rand, nG).forEach(function (spt) { if (rand() < RARITY_CHANCE[s.rarity]) addRec(makeRec(sid, spt.pos, rand, { zone: spt.zone, normal: spt.normal })); });
+          dryCeilingSpots(rand, nG, zone).forEach(function (spt) { if (rand() < RARITY_CHANCE[s.rarity]) addRec(makeRec(sid, spt.pos, rand, { zone: spt.zone, normal: spt.normal })); });
           return;
         }
         for (var g = 0; g < nG; g++) {
@@ -467,7 +473,7 @@
       }
       case 'crawl': {
         var sp3 = s.speed || 0.04;
-        if (s.id === 'cave_crayfish') {
+        if (s.id === 'entrance_crayfish') {
           // territorial: claws up and snapping when you hover close, a pinch if you stay
           if (d < 1.5) { c.warn += dt; warn(c, 'pinch'); act = 0.45 + 0.35 * Math.sin(time * 9 + c.ph) * Math.sin(time * 3.1); }
           else { c.warn = Math.max(0, c.warn - dt); if (d > 2.5) c.warned = false; }
@@ -485,7 +491,7 @@
         tmpV.subVectors(c.wt, c.pos); tmpV.addScaledVector(c.up, -tmpV.dot(c.up)); var l2 = tmpV.length();
         if (l2 > 0.02 && sp3 > 0) { tmpV.multiplyScalar(1 / l2); c.dir.lerp(tmpV, 1 - Math.exp(-dt * 1.5)).normalize(); c.pos.addScaledVector(c.dir, sp3 * dt * (wantPlayer ? 2 : 1)); animRate = 1; amp = 1; }
         else { animRate = 0.05; amp = 0.3; }
-        if (d < 1.3 && s.id === 'cave_crayfish') { tmpV.subVectors(P.pos, c.pos); tmpV.addScaledVector(c.up, -tmpV.dot(c.up)); if (tmpV.lengthSq() > 1e-4) c.dir.lerp(tmpV.normalize(), 1 - Math.exp(-dt * 3)).normalize(); }
+        if (d < 1.3 && s.id === 'entrance_crayfish') { tmpV.subVectors(P.pos, c.pos); tmpV.addScaledVector(c.up, -tmpV.dot(c.up)); if (tmpV.lengthSq() > 1e-4) c.dir.lerp(tmpV.normalize(), 1 - Math.exp(-dt * 3)).normalize(); }
         if (c.pos.distanceTo(c.home) > Math.max(1.2, c.scale * 8) && !wantPlayer) c.wt.copy(c.home);
         snapToRock(c, i);
         break;
@@ -571,9 +577,9 @@
         // plants and patches: react to touch (flash then dim), glowworms dim when disturbed
         if (d < 0.8 && P.speed > 0.4) c.flash = 1.2;
         if (c.flash > 0) c.flash -= dt;
-        if (s.id === 'glowworm') { var dis = (d < 3 && P.speed > 0.6) || d < 0.6; c.dim = lerp(c.dim || 1, dis ? 0.15 : 1, 1 - Math.exp(-dt * (dis ? 3 : 0.25))); baseGlow *= c.dim; }
+        if (s.id === 'starlight_glowworm') { var dis = (d < 3 && P.speed > 0.6) || d < 0.6; c.dim = lerp(c.dim || 1, dis ? 0.15 : 1, 1 - Math.exp(-dt * (dis ? 3 : 0.25))); baseGlow *= c.dim; }
         else if (c.flash > 0) baseGlow = 1 + c.flash * 1.4;
-        if (s.id === 'sulfur_mat' && d < c.scale * 0.6 + 0.4 && P.speed > 0.6 && c.cool <= 0 && TU.fx && TU.fx.spawnSilt) { TU.fx.spawnSilt(70, { pos: c.pos.clone(), burst: true }); c.cool = 3; }
+        if (s.id === 'sulfur_bloom_mat' && d < c.scale * 0.6 + 0.4 && P.speed > 0.6 && c.cool <= 0 && TU.fx && TU.fx.spawnSilt) { TU.fx.spawnSilt(70, { pos: c.pos.clone(), burst: true }); c.cool = 3; }
         animRate = 1; amp = 1;
         break;
       }
@@ -592,7 +598,7 @@
     c.amp = lerp(c.amp, amp, 1 - Math.exp(-dt * 3));
     c.ph += dt * animRate * animSpeed(s) * (0.7 + 0.3 * c.amp);
     if (s.id === 'volt_eel') { var cr = smooth(0, 1.2, c.warn); baseGlow = (c.shockT > 0 ? 6 : 0) + cr * (Math.random() < 0.35 ? 2.2 : 0.3) + 0.04; }
-    if (s.move !== 'ambush' && s.id !== 'cave_crayfish') act = c.act * Math.exp(-dt * 4);
+    if (s.move !== 'ambush' && s.id !== 'entrance_crayfish') act = c.act * Math.exp(-dt * 4);
     c.act = act;
     c.glow = baseGlow * (c.shiny ? 1.5 : 1);
     // "seen": close and near the middle of the view (first time only)
@@ -665,8 +671,9 @@
     }
   }
   function luminance(hex) { _col.setHex(hex); return 0.3 * _col.r + 0.59 * _col.g + 0.11 * _col.b; }
+  var _swCol = new T.Color();
   function drawSwarm(P, c, n, ai, ci, im, tint) {
-    var s = c.sp, N = s.swarmN, R = c.swarmR * c.spread * (c.showSpread || 1), sc = c.drawScale || c.scale, gl = new T.Color(s.glow);
+    var s = c.sp, N = s.swarmN, R = c.swarmR * c.spread * (c.showSpread || 1), sc = c.drawScale || c.scale, gl = _swCol.setHex(s.glow);
     for (var j = 0; j < N && n < P.cap; j++) {
       var sd = c.swarmSeed[j], ox = c.swarmOff[j * 3], oy = c.swarmOff[j * 3 + 1], oz = c.swarmOff[j * 3 + 2];
       var t = time * (0.6 + (sd % 1) * 0.6) + sd;
@@ -723,11 +730,12 @@
   /* ------------------------------------------------------------------ */
   /* Per step                                                            */
   /* ------------------------------------------------------------------ */
+  function anyActive(list) { for (var i = 0; i < list.length; i++) if (list[i].active) return true; return false; }
   function step(dt) {
     time += dt; stepNo = (stepNo + 1) | 0;
     var P = TU.player.state;
     if (stepNo % 20 === 1) activation(P.pos);
-    for (var g = 0; g < groups.length; g++) { var gg = groups[g]; if (gg.members.some(function (c) { return c.active; })) stepGroup(gg, dt, P); }
+    for (var g = 0; g < groups.length; g++) { var gg = groups[g]; if (anyActive(gg.members)) stepGroup(gg, dt, P); }
     for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.active && !c.caught) stepCreature(c, i, dt, P); }
     if (show) show.recs.forEach(function (c) { animOnly(c, dt); });
   }
@@ -737,7 +745,7 @@
     if (c.sp.move === 'jelly') c.spin += 0;
     c.glow = (c.sp.id === 'volt_eel' ? 0.35 + 0.25 * Math.sin(c.ph * 3) : 0.85 + 0.15 * Math.sin(time * 1.3 + c.rnd * 5)) * (c.shiny ? 1.5 : 1);
     if (c.sp.move === 'ambush') c.act = show && show.jaw != null ? show.jaw : 0.15;
-    if (c.sp.id === 'cave_crayfish') c.act = show && show.jaw != null ? show.jaw : 0.5;
+    if (c.sp.id === 'entrance_crayfish') c.act = show && show.jaw != null ? show.jaw : 0.5;
   }
   function frame() {
     if (!TU.scene || !TU.camera) return;
@@ -753,9 +761,10 @@
   function get(id) { for (var i = 0; i < recs.length; i++) if (recs[i].id === id) return recs[i]; return null; }
   // The creature closest to the center of the view within maxDist (m), with view dot >= minDot.
   // opts: { catchable: true } only glowing catchables, { kind: 'flora'|'fauna' }
+  var _fwd = new T.Vector3();
   function nearestInView(maxDist, minDot, opts) {
     maxDist = maxDist || 6; minDot = minDot == null ? 0.9 : minDot; opts = opts || {};
-    var cam = TU.camera, f = new T.Vector3(0, 0, -1).applyQuaternion(cam.quaternion), best = null, bestScore = -1, bestDot = 0, bestD = 0;
+    var cam = TU.camera, f = _fwd.set(0, 0, -1).applyQuaternion(cam.quaternion), best = null, bestScore = -1, bestDot = 0, bestD = 0;
     for (var i = 0; i < recs.length; i++) {
       var c = recs[i]; if (!c.active || c.caught) continue;
       if (opts.catchable && !c.sp.catchable) continue;
@@ -782,7 +791,7 @@
   function lanternSlots() {
     var inv = TU.player.inventory, lt = inv && inv.lantern;
     if (lt && lt.slots) return lt.slots;
-    return TU.cfg.debug && TU.cfg.debug.enabled ? 2 : 0; // debug builds get a 2-slot jar so the feature can be tried
+    return TU.cfg.debug && TU.cfg.debug.freeLantern ? 2 : 0; // cfg.debug.freeLantern: a 2-slot jar to try the feature without buying it
   }
   function catchCreature(id) {
     var c = get(id); if (!c || c.caught || !c.active) return { ok: false, reason: 'gone' };
@@ -801,11 +810,11 @@
     return { ok: true, speciesId: c.speciesId, brightness: br };
   }
   // Light the lantern gives: { brightness (0..cap), intensity (0..1), range (m), color (THREE.Color), count, slots }.
-  var _lc = new T.Color();
+  var _lc = new T.Color(), _lc2 = new T.Color();
   function lanternLight() {
     var sum = 0, r = 0, g = 0, b = 0;
     lantern.items.forEach(function (it) { sum += it.brightness; _lc.setHex(it.color); r += _lc.r * it.brightness; g += _lc.g * it.brightness; b += _lc.b * it.brightness; });
-    var br = Math.min(C.lanternCap, sum), col = sum > 0 ? new T.Color(r / sum, g / sum, b / sum) : new T.Color(0x000000);
+    var br = Math.min(C.lanternCap, sum), col = sum > 0 ? _lc2.setRGB(r / sum, g / sum, b / sum).clone() : _lc2.setRGB(0, 0, 0).clone();
     var flick = 0.92 + 0.08 * Math.sin(time * 1.7) * Math.sin(time * 0.53);
     return { brightness: br, intensity: br / C.lanternCap * flick, range: br > 0 ? 1.5 + br * 1.1 : 0, color: col, count: lantern.items.length, slots: lanternSlots(), items: lantern.items.slice() };
   }
@@ -816,6 +825,12 @@
     return true;
   }
 
+  // Mark shinies in the logbook entries (the UI shows a gold badge): entry.shiny = true, entry.shinies = count.
+  function markShiny(c, res, vres) {
+    if (!c.shiny) return;
+    [res, vres].forEach(function (r) { if (r && r.entry) { r.entry.shiny = true; r.entry.shinies = (r.entry.shinies || 0) + 1; } });
+    TU.save.write();
+  }
   // Logbook bounty for one log result.
   function bountyFor(c, res, variantRes, photo) {
     var r = c.sp.rarity, $ = 0;
@@ -836,6 +851,7 @@
     var size = tapeRead(c), depth = Math.max(0, -c.pos.y);
     var res = TU.logbook.add({ speciesId: c.speciesId, sizeM: size, zone: c.zone, depthM: depth });
     var vres = c.variant ? TU.logbook.add({ speciesId: c.speciesId + ':' + c.variant, sizeM: size, zone: c.zone, depthM: depth }) : null;
+    markShiny(c, res, vres);
     var $ = bountyFor(c, res, vres, false); earnings.logbook += $;
     return { id: c.id, speciesId: c.speciesId, sizeM: size, first: res.first, record: res.record, variant: c.variant, variantFirst: !!(vres && vres.first), bounty: $ };
   }
@@ -862,6 +878,7 @@
     c.photographed = true;
     var res = TU.logbook.add({ speciesId: c.speciesId, zone: c.zone, depthM: Math.max(0, -c.pos.y), photo: true });
     var vres = c.variant ? TU.logbook.add({ speciesId: c.speciesId + ':' + c.variant, zone: c.zone, photo: true }) : null;
+    markShiny(c, res, vres);
     var $ = bountyFor(c, res, vres, true); earnings.logbook += $;
     return { id: c.id, speciesId: c.speciesId, first: res.first, variant: c.variant, bounty: $ };
   }

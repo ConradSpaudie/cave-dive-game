@@ -181,7 +181,7 @@
       else if (P.bottom) a = 'chamber';
       else if (P.dry) a = 'drychamber';
       else if (t === 'landmark') a = 'lm' + P.id;
-      else if (t === 'air_pocket') a = 'pocket';
+      else if (t === 'air_pocket' || P.airChamber) a = 'pocket';
       else if (t === 'squeeze') a = 'squeeze';
       else if (t === 'silt_floor' || P.siltFixed) a = 'silt';
       else if (t === 'current') a = 'current';
@@ -252,11 +252,12 @@
     var E = G.entrance; if (!E) return 0;
     var tx = SKY[0], ty = SKY[1], tz = SKY[2];
     var dx = tx - x, dy = ty - y, dz = tz - z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d > 46) return 0;
+    var DR = TU.cfg.cave.daylightRange || 46; // m, how far daylight reaches into the cave
+    if (d > DR) return 0;
     if (y > -0.2 && inBox(E.box, x, y, z)) return 1;
     var hit = GEO.march(G, x, y, z, dx / d, dy / d, dz / d, d);
     if (hit < d - 0.6) return 0;
-    return Math.pow(clamp(1 - d / 46, 0, 1), 1.5);
+    return Math.pow(clamp(1 - d / DR, 0, 1), 1.5);
   }
 
   /* ------------------------------------------------------------------ */
@@ -344,9 +345,32 @@
       var ch = map.get(ck); if (!ch) { ch = { key: ck, cells: [], pi: pi, mesh: null }; map.set(ck, ch); }
       ch.cells.push([x, y, d]);
     });
-    W.chunks = []; W.chunkByCell = new Map();
-    map.forEach(function (ch) { buildChunk(ch); W.chunks.push(ch); ch.cells.forEach(function (c) { W.chunkByCell.set(GEO.key(c[0], c[1], c[2]), ch); }); });
+    W.chunks = []; W.chunkByCell = new Map(); W.pending = [];
+    // Progressive build: the wall mesh near the spawn is built now, the rest a few chunks per
+    // frame (nearest to the camera first, and immediately if you get close to one).
+    var sp = spawnPoint().pos;
+    map.forEach(function (ch) {
+      var c = [0, 0, 0];
+      ch.cells.forEach(function (cc) { var w = GEO.cellCenter(cc[0], cc[1], cc[2]); c[0] += w[0]; c[1] += w[1]; c[2] += w[2]; });
+      ch.center = new T.Vector3(c[0] / ch.cells.length, c[1] / ch.cells.length, c[2] / ch.cells.length);
+      ch.radius = 0; ch.cells.forEach(function (cc) { var w = GEO.cellCenter(cc[0], cc[1], cc[2]); ch.radius = Math.max(ch.radius, ch.center.distanceTo(v3(w)) + 7); });
+      W.chunks.push(ch); ch.cells.forEach(function (cc) { W.chunkByCell.set(GEO.key(cc[0], cc[1], cc[2]), ch); });
+      if (sp.distanceTo(ch.center) - ch.radius < 40) buildChunk(ch); else W.pending.push(ch);
+    });
   }
+  // Build pending wall chunks: forced for chunks near pos, then nearest first within a time budget (ms).
+  function pumpChunks(pos, budgetMs) {
+    if (!W.pending || !W.pending.length) return 0;
+    var t0 = performance.now(), built = 0;
+    W.pending.sort(function (a, b) { return (pos.distanceTo(a.center) - a.radius) - (pos.distanceTo(b.center) - b.radius); });
+    while (W.pending.length) {
+      var ch = W.pending[0], near = pos.distanceTo(ch.center) - ch.radius < 35;
+      if (!near && performance.now() - t0 > budgetMs) break;
+      W.pending.shift(); buildChunk(ch); built++;
+    }
+    return built;
+  }
+  function finishBuild() { while (W.pending && W.pending.length) buildChunk(W.pending.shift()); updateStats(); return W.stats; }
 
   /* ------------------------------------------------------------------ */
   /* Colliders: boulders, columns, monoliths, fallen rocks                */
@@ -541,15 +565,22 @@
   var SPOT_NAMES = ['entrance', 'mid', 'junction', 'pocket', 'airpocket', 'pocketSurface', 'squeeze', 'silt', 'drop', 'current', 'drychamber', 'ledge', 'landmark', 'deep', 'bottom', 'end', 'stalactites', 'branch', 'branchEnd', 'deadend', 'loop'];
   function look(from, to) { return U.yawPitchOf({ x: to[0] - from[0], y: to[1] - from[1], z: to[2] - from[2] }); }
   function mk(p, yp, s, pathId) { return { pos: v3(p), yaw: yp.yaw, pitch: clamp(yp.pitch, -1.35, 1.35), s: s, pathId: pathId || 'main' }; }
+  // A spot on a path, looking along the passage: toward the center line 5 m ahead (not the local
+  // tangent, which can point into a wall or the floor at a bend), with the pitch kept moderate.
   function onPath(path, s, back) {
-    var a = pathAt(path, s), d = back ? V.mul(a.tan, -1) : a.tan;
-    return mk(a.p, U.yawPitchOf({ x: d[0], y: d[1], z: d[2] }), s, path.kind);
+    var a = pathAt(path, s), b = pathAt(path, back ? s - 5 : s + 5);
+    var d = V.sub(b.p, a.p); if (V.len(d) < 0.5) d = back ? V.mul(a.tan, -1) : a.tan;
+    var yp = U.yawPitchOf({ x: d[0], y: d[1], z: d[2] });
+    yp.pitch = clamp(yp.pitch, -1.0, 0.9);
+    return mk(a.p, yp, s, path.kind);
   }
   function firstMain(fn) { var L = G.layout; for (var i = 0; i < L.mainPath.length; i++) { var P = G.byId[L.mainPath[i]]; if (fn(P)) return P; } return null; }
   function sOnMain(P, pt) { var np = nearestOnPiece(P, pt[0], pt[1], pt[2]); return np ? np : null; }
   function computeSpots() {
     var S = {}, main = G.main, L = G.layout;
-    S.entrance = onPath(main, Math.min(3, main.L));
+    S.entrance = onPath(main, Math.min(5, main.L)); // 5 m in, like the handmade cave
+    // aim straight at the line a few meters ahead (the way down out of the pool)
+    (function () { var a = pathAt(main, 5), b = pathAt(main, 9); var yp = look(a.p, b.p); S.entrance.yaw = yp.yaw; S.entrance.pitch = clamp(yp.pitch, -1.4, 0.6); })();
     S.mid = onPath(main, Math.min(main.L * 0.12 + 18, main.L - 5));
     var J = firstMain(function (P) { return P.type === 'junction_t' || P.type === 'junction_x'; }) || firstMain(function (P) { return P.role === 'main' && P.idx > 3; });
     if (J) { var nj = sOnMain(J, J.node || J.center); S.junction = onPath(nj.path, nj.s); }
@@ -589,9 +620,8 @@
     if (DR) { var nd = sOnMain(DR, DR.node); S.drop = onPath(nd.path, nd.s); }
     var CU = G.currents[0];
     if (CU) { var cp = G.pathById[CU.pathId === 'main' ? 'main' : null]; var pc = G.pieces.filter(function (P) { return P.flow && P.flow.id === CU.id; })[0]; var nc = sOnMain(pc, pc.node); S.current = onPath(nc.path, nc.s - 1); }
-    // dry chamber: standing on the floor, away from the pools
-    var DC = G.pieces.filter(function (P) { return P.dry; })[0];
-    if (DC) {
+    // dry chambers: a standing point on the floor of each, away from the pools
+    function standOn(DC) {
       var best = null, bs = -1e9;
       for (var gx = 0; gx <= 8; gx++) for (var gz = 0; gz <= 8; gz++) {
         var px = lerp(DC.box.x0 + 2, DC.box.x1 - 2, gx / 8), pz = lerp(DC.box.z0 + 2, DC.box.z1 - 2, gz / 8);
@@ -604,6 +634,12 @@
         var score = -ff * 2 + Math.min(poolD, 6);
         if (score > bs) { bs = score; best = [px, fy2 + 0.9, pz]; } // stand 0.9 m above the rock you are on
       }
+      return best;
+    }
+    G.pieces.forEach(function (P) { if (P.dry) P.standSpot = standOn(P); });
+    var DC = G.pieces.filter(function (P) { return P.dry && P.standSpot; })[0];
+    if (DC) {
+      var best = DC.standSpot;
       if (best) S.drychamber = mk(best, look(best, [DC.center[0], best[1], DC.center[2]]), 0, 'main');
       if (DC.ledge) {
         // stand on the ledge top near the cliff edge (search for a spot with headroom and rock below)
@@ -675,7 +711,8 @@
       if (field(p[0], p[1], p[2]) > -0.6) return;
       if (p[1] > waterY - 0.8) p[1] = waterY - 0.8;
       if (field(p[0], p[1], p[2]) > -0.4) return;
-      list.push({ id: id, pos: v3(p), target: new T.Vector3(target[0], waterY, target[2]), dist: Math.abs(ds) });
+      var to = new T.Vector3(target[0], waterY, target[2]);
+      list.push({ id: id, pos: v3(p), target: to, to: to.clone(), dir: to.clone().sub(v3(p)).normalize(), dist: Math.abs(ds) });
     });
   }
   function buildFeatures(dress) {
@@ -690,11 +727,18 @@
       F.airPockets.push({ id: 'pocket' + P.id, pieceId: P.id, pos: v3(c), surfaceY: P.waterY, radius: 2.3, hintPos: new T.Vector3(c[0], P.waterY - 3.2, c[2]), warm: !!P.warm });
       hintsAround(P, c, P.waterY, 'pocket' + P.id, F.airHints);
     });
+    // big chambers with an air dome at the top (dry chambers whose passages come in too high)
+    G.pieces.forEach(function (P) {
+      if (!P.airChamber) return;
+      var c = [P.center[0], P.waterY, P.center[2]];
+      F.airPockets.push({ id: 'pocket' + P.id, pieceId: P.id, pos: v3(c), surfaceY: P.waterY, radius: (P.box.x1 - P.box.x0) / 2 - 1, hintPos: new T.Vector3(c[0], P.waterY - 3.2, c[2]), warm: !!P.warm, chamber: true });
+      hintsAround(P, c, P.waterY, 'pocket' + P.id, F.airHints);
+    });
     F.dryChambers = [];
     G.pieces.forEach(function (P) {
       if (!P.dry) return;
       var b = P.box;
-      F.dryChambers.push({ id: 'dry' + P.id, pieceId: P.id, pos: new T.Vector3(P.center[0], P.floorBase + 1, P.center[2]), floorY: P.floorBase, waterY: P.waterY, size: new T.Vector3(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0), warm: !!P.warm,
+      F.dryChambers.push({ id: 'dry' + P.id, pieceId: P.id, pos: P.standSpot ? v3(P.standSpot) : new T.Vector3(P.center[0], P.floorBase + 1, P.center[2]), floorY: P.floorBase, waterY: P.waterY, size: new T.Vector3(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0), warm: !!P.warm,
         ledge: P.ledge ? { pos: P.ledgeSpot ? v3(P.ledgeSpot) : null, height: P.ledge.H, top: P.ledge.top, dir: new T.Vector3(-P.ledge.ax[0], 0, -P.ledge.ax[1]) } : null,
         pools: P.pools.map(function (pl) { return new T.Vector3(pl.cx, P.waterY, pl.cz); }) });
       P.pools.forEach(function (pl) { hintsAround(P, [pl.cx, 0, pl.cz], P.waterY, 'dry' + P.id, F.airHints); });
@@ -731,9 +775,15 @@
       });
     });
     return {
+      // preferred by the watch hologram: one polyline per path (main line first)
+      paths: G.paths.map(function (p) {
+        var pts = [], last = null;
+        p.pts.forEach(function (q, i) { if (!last || i === p.pts.length - 1 || Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) + Math.abs(q[2] - last[2]) > 2) { pts.push([+q[0].toFixed(2), +q[1].toFixed(2), +q[2].toFixed(2)]); last = q; } });
+        return { id: p.id, kind: p.kind, points: pts, radius: 1.8, length: Math.round(p.L), collapsed: !!p.collapsed };
+      }),
       segments: segs,
       chambers: G.pieces.filter(function (P) { return P.room; }).map(function (P) { var b = P.box; return { min: [b.x0, b.y0, b.z0], max: [b.x1, b.y1, b.z1], center: P.center.slice(), kind: P.start ? 'entrance' : P.bottom ? 'bottom' : P.type, dry: !!P.dry, name: P.lmName || null }; }),
-      airPockets: G.pieces.filter(function (P) { return P.type === 'air_pocket'; }).map(function (P) { return { pos: [P.node[0], P.waterY, P.node[2]], surfaceY: P.waterY }; }),
+      airPockets: G.pieces.filter(function (P) { return P.type === 'air_pocket' || P.airChamber; }).map(function (P) { var c = P.node || P.center; return { pos: [c[0], P.waterY, c[2]], surfaceY: P.waterY }; }),
       dry: G.pieces.filter(function (P) { return P.dry; }).map(function (P) { return { pos: [P.center[0], P.floorBase, P.center[2]], waterY: P.waterY }; }),
       bottom: W.core ? W.core.slice() : null,
       entrance: [G.entrance.pool[0], 0, G.entrance.pool[2]],
@@ -747,11 +797,11 @@
   /* ------------------------------------------------------------------ */
   function remeshPiece(P) {
     var done = new Set();
-    P.cells.forEach(function (c) { var ch = W.chunkByCell.get(GEO.key(c[0], c[1], c[2])); if (ch && !done.has(ch)) { done.add(ch); buildChunk(ch); } });
+    P.cells.forEach(function (c) { var ch = W.chunkByCell.get(GEO.key(c[0], c[1], c[2])); if (ch && ch.mesh && !done.has(ch)) { done.add(ch); buildChunk(ch); } });
     // neighbours see the new lattice at their borders too
     P.ports.forEach(function (pt) {
       var o = G.pieces[pt.a === P.idx ? pt.b : pt.a];
-      o.cells.forEach(function (c) { var ch = W.chunkByCell.get(GEO.key(c[0], c[1], c[2])); if (ch && !done.has(ch)) { done.add(ch); buildChunk(ch); } });
+      o.cells.forEach(function (c) { var ch = W.chunkByCell.get(GEO.key(c[0], c[1], c[2])); if (ch && ch.mesh && !done.has(ch)) { done.add(ch); buildChunk(ch); } });
     });
   }
   // Block a piece with rubble (rock is added to the field, the mesh is rebuilt, colliders follow).
@@ -817,8 +867,21 @@
   function disposeWorld() {
     if (!W.root) return;
     TU.scene.remove(W.root);
-    W.root.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.userData && o.material.userData.own) o.material.dispose(); });
-    W.root = null; W.chunks = []; W.colliders = []; W.colHash = new Map(); W.falling = [];
+    // free everything on the GPU this cave created: geometries, instance buffers, its own materials
+    // and their own textures (shared materials and the shared TU.tex textures are kept)
+    W.root.traverse(function (o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.isInstancedMesh && o.dispose) o.dispose();
+      var m = o.material;
+      if (m && m.userData && m.userData.own) {
+        ['map', 'emissiveMap', 'normalMap', 'alphaMap'].forEach(function (k) { if (m[k] && m[k].userData && m[k].userData.own) m[k].dispose(); });
+        m.dispose();
+      }
+    });
+    W.root.clear && W.root.clear();
+    W.root = null; W.chunks = []; W.pending = []; W.chunkByCell = new Map(); W.colliders = []; W.colHash = new Map(); W.falling = [];
+    W.dress = null; W.anim = null; W.findMesh = {}; W.instRegions = []; W.rubble = null; W.spots = null;
+    G = null; W.G = null;
   }
   function makeMaterials() {
     if (W.mats) return W.mats;
@@ -866,8 +929,14 @@
     TU.cave.features = buildFeatures(dress);
     TU.cave.lengths = { main: G.main.L };
     W.built = true; W.buildKey = bk; W.t = 0; W.quakes = 0;
-    var tris = 0, verts = 0; W.chunks.forEach(function (c) { tris += c.tris; verts += c.verts; });
-    W.stats = { ms: Math.round(performance.now() - t0), sampleMs: Math.round(tS - t0), meshMs: Math.round(tM - tS), dressMs: Math.round(performance.now() - tM), chunks: W.chunks.length, rockTris: tris, rockVerts: verts, cells: G.cellMap.size, pieces: G.pieces.length, seed: layout.seed, difficulty: layout.difficulty, mainLength: Math.round(G.main.L), stalactites: dress.stalactites.length, colliders: W.colliders.length };
+    W.stats = { ms: Math.round(performance.now() - t0), sampleMs: Math.round(tS - t0), meshMs: Math.round(tM - tS), dressMs: Math.round(performance.now() - tM), chunks: W.chunks.length, cells: G.cellMap.size, pieces: G.pieces.length, seed: layout.seed, difficulty: layout.difficulty, mainLength: Math.round(G.main.L), stalactites: dress.stalactites.length, colliders: W.colliders.length };
+    updateStats();
+  }
+  function updateStats() {
+    if (!W.stats) return null;
+    var tris = 0, verts = 0, built = 0; W.chunks.forEach(function (c) { if (c.mesh) { tris += c.tris; verts += c.verts; built++; } });
+    W.stats.rockTris = tris; W.stats.rockVerts = verts; W.stats.chunksBuilt = built; W.stats.chunksPending = W.pending ? W.pending.length : 0;
+    return W.stats;
   }
   // Same cave again (restart with the same seed): put back what quakes changed.
   function resetDynamic() {
@@ -904,7 +973,10 @@
     if (!W.built) return;
     TU.caveMat.update(dt);
     var cam = TU.camera.position;
-    if (!W.noCull) for (var i = 0; i < W.chunks.length; i++) { var ch = W.chunks[i]; ch.mesh.visible = cam.distanceTo(ch.center) - ch.radius < 60; }
+    if (W.pending && W.pending.length) pumpChunks(cam, 5);
+    // chunks farther than the cull distance are hidden (the fog has eaten them anyway); graphics quality sets it
+    var cull = (TU.fx.gfx && TU.fx.gfx.cullDist) || TU.cfg.cave.cullDist || 60;
+    if (!W.noCull) for (var i = 0; i < W.chunks.length; i++) { var ch = W.chunks[i]; if (ch.mesh) ch.mesh.visible = cam.distanceTo(ch.center) - ch.radius < cull; }
     if (TU.caveDress && TU.caveDress.frame) TU.caveDress.frame(W, G, dt);
   }
 
@@ -914,7 +986,8 @@
     spot: spot, spawnPoint: spawnPoint, areas: AREAS,
     mapData: mapData, quake: quake, takeFind: takeFind, collapse: function (pieceId) { return G ? collapsePiece(G.byId[pieceId], 'debug') : false; },
     spotNames: function () { return SPOT_NAMES.filter(function (n) { return W.spots && !!W.spots[n]; }); },
-    stats: function () { return W.stats || null; },
+    stats: function () { return updateStats(); },
+    finishBuild: finishBuild,
     _W: W
   });
 

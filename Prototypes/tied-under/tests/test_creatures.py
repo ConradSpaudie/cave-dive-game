@@ -100,7 +100,7 @@ def main():
             print("  %-18s phase +%.2f  anim diff %.2f  detail %.1f" % (sid, r2 - r, d, b))
             assert r2 > r, "animation phase must advance for " + sid
             assert b > 6, "the showcase picture of %s looks empty" % sid
-            moving = sid not in ("stalag_moss", "glimmer_moss", "ghost_fire_fungus", "sulfur_mat", "glowworm")
+            moving = sid not in ("stalag_moss", "glimmer_moss", "ghost_fire_fungus", "sulfur_bloom_mat", "starlight_glowworm")
             if moving:
                 assert d > 0.08, "%s should visibly move between frames (diff %.3f)" % (sid, d)
         if os.path.exists(tmp):
@@ -116,8 +116,8 @@ def main():
             shot(page, "B_olm_shiny.png")
             page.evaluate("__debug.TU.creatures.debugShowcase('lanternjaw', {jaw: 1}); __debug.TU.creatures.debugAdvance(0.3)")
             shot(page, "B_lanternjaw_bite.png")
-            page.evaluate("__debug.TU.creatures.debugShowcase('cave_crayfish', {jaw: 1}); __debug.TU.creatures.debugAdvance(0.3)")
-            shot(page, "B_cave_crayfish_claws_open.png")
+            page.evaluate("__debug.TU.creatures.debugShowcase('entrance_crayfish', {jaw: 1}); __debug.TU.creatures.debugAdvance(0.3)")
+            shot(page, "B_entrance_crayfish_claws_open.png")
             page.evaluate("__debug.TU.creatures.debugShowcaseFind('all')")
             shot(page, "B_finds_all.png")
             for name in page.evaluate("__debug.TU.creatures.debugFindModels()"):
@@ -157,6 +157,7 @@ def main():
         print("measure:", res["m"])
         assert res["logged"] and res["size"][0] * 0.95 <= res["m"]["sizeM"] <= res["size"][1] * 1.05, "measured size must be realistic and logged"
         res = page.evaluate("""() => { const C = __debug.TU.creatures; __debug.sim(0.1);
+            __debug.TU.player.debug.giveLantern(0);
             const a = C.debugSpawnInFront('halo_jelly', 1.0, {still: true}); __debug.sim(0.1);
             const r = C.catch(a.id); return { r, light: C.lanternLight() }; }""")
         print("catch:", res["r"], "lantern brightness:", res["light"]["brightness"])
@@ -171,7 +172,7 @@ def main():
         print("volt eel:", res)
         assert "creature:warn:shock" in res and "creature:attack:shock" in res, "the Volt Eel should warn and then shock"
         res = page.evaluate("""() => { const C = __debug.TU.creatures; window.__ev.length = 0; __debug.teleport('deep', {low: true, pitch: -0.9}); __debug.sim(0.2);
-            C.debugSpawnInFront('cave_crayfish', 0.7, {still: true}); __debug.sim(2.2); return window.__ev.filter(e => e.n === 'creature:attack').map(e => e.kind); }""")
+            C.debugSpawnInFront('entrance_crayfish', 0.7, {still: true}); __debug.sim(2.2); return window.__ev.filter(e => e.n === 'creature:attack').map(e => e.kind); }""")
         print("crayfish:", res)
         assert "pinch" in res, "a crayfish should pinch when you hover over it"
         res = page.evaluate("""() => { const C = __debug.TU.creatures, f = C.finds()[0]; if (!f) return null; window.__ev.length = 0;

@@ -2,7 +2,13 @@
 
 Working things you can play or run today, built overnight on Oct 18. Both are also published as private pages in your Claude account.
 
-## 1. Swim Feel Test (play it)
+## 0. Tied Under, full browser game (play this one)
+- Page: https://claude.ai/artifact/YWugPxeZjUt6tCsZMu65Ps (replaced the old feel test at the same link)
+- Files: `Prototypes/tied-under/` (index.html plus js/ modules, CONTRACT.md explains how the parts fit).
+- Single player: Sump Camp hub, gear and upgrades, suit painting, procedural caves every run, 21 animated creatures, hands, crawl/squeeze/walk/ragdoll, currents, injuries and tape, mask flooding, wrist hologram map, logbook, leaderboards, tutorial.
+- Not in the browser version: co-op, proximity voice, saboteur (need a server; they come with Unreal).
+
+## 1. Swim Feel Test (original, now replaced)
 - Page: https://claude.ai/artifact/YWugPxeZjUt6tCsZMu65Ps (title "Tied Under Feel Test")
 - File: `Prototypes/swim-feel/index.html`, screenshots in `Prototypes/swim-feel/screens/`
 - A browser version of Phase 1 "The Feel": one flooded cave about 245 m long, kick and glide swimming, flashlight with an 8 minute battery, a 10 minute tank, breath buoyancy (hold B to inflate, V to deflate), panic, silt-outs, an air pocket, a squeeze, a guideline rope back to the entrance, waypoints, depth narcosis, generated breathing audio, and a glowing ring at the bottom.

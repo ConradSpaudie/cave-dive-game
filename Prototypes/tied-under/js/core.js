@@ -232,7 +232,10 @@
     panic: {
       calm: -2.2, sprint: 4, dark: 3.2, lowAir: 2.5, silt: 3, squeeze: 1.4, slow: -9, surfaced: -8, // per second
       hitBase: 6, hitScale: 16, // added on a wall hit
-      siltPanicAt: 0.45      // silt visibility (0..1) that adds panic
+      siltPanicAt: 0.45,     // silt visibility (0..1) that adds panic
+      // agent C's extras: above highFrom panic drains staminaLoss stamina/s per point; cut/shock/bite/quake/fall are added at once
+      highFrom: 60, staminaLoss: 0.1, cut: 12, cutScale: 26, shock: 24, bite: 30, quake: 9, fall: 14,
+      darkRadius: 8          // m, no glowing creature this close (and no light) counts as darkness
     },
     breath: {
       period: 4.8, slowPeriod: 7.2, surfacedPeriod: 4.2, // s per breath
@@ -262,15 +265,71 @@
       lantern: { slots: [0, 2, 4, 6, 8, 10], cost: [400, 800, 1800, 3500, 7000] } // level 0 = not bought
     },
     rope: { pointSpacing: 1.0, retractDist: 0.6, maxPoints: 2400, radius: 0.011 }, // m
-    waypoints: { max: 64, lights: 3, dropAhead: 0.5 },
+    waypoints: { max: 64, lights: 2, dropAhead: 0.5 }, // lights: pooled point lights for the nearest waypoints
     fx: {
       fogDensity: 0.052,     // base exp2 fog density underwater
       fogAir: 0.03,          // fog density when your head is in air
       fogDeep: 0x020a0b, fogMouth: 0x0d3c44, fogSilt: 0x1a140c, fogAir2: 0x040605,
       snowCount: 1800, snowBox: 14, bubbleCount: 360, siltCount: 1500,
-      exposure: 1.15, pixelRatioMax: 1.5
+      exposure: 1.15        // tone mapping exposure (render resolution: see gfx below)
     },
-    debug: { enabled: true }
+    // Graphics quality presets (Settings > Feel > Graphics). The auto scaler moves the render scale
+    // between scaleMin and the preset's scale when frames take too long.
+    gfx: {
+      low:    { pixelRatio: 0.75, msaa: 0, shadows: false, shadowMap: 512,  particles: 0.45, cullDist: 40, lowRock: true },
+      medium: { pixelRatio: 1.0,  msaa: 0, shadows: true,  shadowMap: 512,  particles: 0.7,  cullDist: 50, lowRock: false },
+      high:   { pixelRatio: 1.25, msaa: 4, shadows: true,  shadowMap: 1024, particles: 1.0,  cullDist: 60, lowRock: false },
+      autoTargetMs: 17.5,    // ms per frame we aim for (60 fps is 16.7 ms)
+      autoSlowMs: 21,        // ms, average above this lowers the render scale
+      autoFastMs: 13,        // ms, average below this raises it again
+      autoStep: 0.1,         // render scale change per adjustment
+      autoEvery: 1.5,        // s between adjustments
+      scaleMin: 0.5          // lowest render scale (fraction of the preset pixel ratio)
+    },
+    // Cave build and drawing (agent A's local constants, now shared).
+    cave: { margin: 0.8, cullDist: 60, daylightRange: 46 }, // m: rock between unrelated passages, chunk draw distance, daylight reach
+    // Creatures (agent B).
+    creatures: {
+      activeRadius: 34,      // m, creatures closer than this are simulated and drawn
+      sleepRadius: 44,       // m, active creatures farther than this freeze again
+      maxActive: 220,        // most creatures active at once
+      catchDist: 3.0,        // m, how close you must be to catch something
+      measureDist: 3.0,      // m, measuring tape reach
+      measureTime: 1.2,      // s, base time to hold the tape still
+      lights: 2,             // pooled point lights for the brightest glowers
+      halos: 1200,           // glow sprite budget
+      lanternCap: 10,        // lantern brightness cap (sum of species brightness)
+      shinyChance: 1 / 200   // chance a spawn is a shiny variant
+    },
+    // Player systems (agent C). Units in each comment.
+    crawl: { radius: 1.3, floorDist: 1.0, pull: 3.4, interval: 1.0, pullTime: 0.42, drag: 1.35, silt: 0.4 },          // m, m, m/s^2, s, s, x, x
+    squeeze: { radius: 0.82, tuckRadius: 1.4, stuckRate: 0.32, wiggle: 0.28, pop: 0.5 },                              // m, m, 1/s, per wiggle, m/s
+    walk: { gravity: 9.8, speed: 1.7, run: 2.8, crouchSpeed: 0.7, accel: 9, airAccel: 1.5, jump: 3.7, eye: 1.55, crouchEye: 0.8, stepLen: 0.75 }, // m/s^2, m/s, m/s, m/s, 1/s, 1/s, m/s, m, m, m
+    fall: { minH: 2.2, sprainH: 4.5, breakH: 7.5, maimH: 11, dmgPerM: 7, tumbleV: -7.5, downTime: 2.2, getUp: 0.9, waterSafeH: 14 }, // m, m, m, m, health per m, m/s, s, s, m
+    grab: { reach: 1.05, damp: 7, drain: 3.5 },        // m, 1/s velocity damping, stamina/s while holding in a current
+    current: { strong: 1.0, caught: 1.45, panic: 7, floodRate: 0.22, tugGain: 0.085, tugDecay: 0.2, shelter: 5, failKick: 1.3 }, // m/s, m/s, per s, level/s, per press, per s, s, x
+    // bleedOut: s of untreated bleeding at the lowest health before you bleed out (the run ends).
+    injury: { cutImpact: 1.45, cutChance: 0.6, bleedHealth: 1.8, bleedPanic: 2.2, tapeTime: 1.5, ductPeel: [70, 140], minHealth: 5, sprainHeal: 150, bleedOut: 25 }, // m/s, 0..1, hp/s per severity, per s, s, s, hp, s, s
+    // crushSeverity: falling rock severity (radius m x speed m/s) that kills; above crushCut it injures.
+    rocks: { crushSeverity: 2.5, crushBreak: 1.0, crushCut: 0.25 },
+    mask: { floodImpact: 1.8, floodChance: 0.55, clearRate: 0.42, clearAir: 3.0, drain: 0.6, panic: 3.5 },            // m/s, 0..1, level/s, bar/s, level/s out of water, per s
+    // Mask types from the loadout. flood: x mask flooding, fov: degrees added to the view.
+    masks: {
+      standard: { flood: 1.0, fov: 0, headlamp: false },
+      tight: { flood: 0.5, fov: -4, headlamp: false },
+      wide: { flood: 1.25, fov: 10, headlamp: false },
+      headlamp: { flood: 1.0, fov: 0, headlamp: true }
+    },
+    // Flipper presets from the loadout (speed and stamina multipliers). Shape and width tokens add up to +-3%.
+    flippers: {
+      paddle: { speed: 1.0, stamina: 1.0 }, split: { speed: 0.96, stamina: 1.1 },
+      jet: { speed: 1.04, stamina: 0.93 }, blade: { speed: 1.07, stamina: 0.9, squeeze: 0.8 }
+    },
+    depth: { staminaLoss: 0.35, from: 20, to: 200, breathLoss: 0.4 }, // fraction of stamina max lost, m, m, fraction of drown time lost
+    cold: { drain: 1.6, warmRegen: 3.5, warmAt: 21 },  // stamina/s at full cold, stamina/s, degrees C
+    tank: { pickupDist: 1.8, dropStamina: 15, sink: 0.55 }, // m, stamina, m/s
+    lantern: { range: 7.5, perBright: 0.45 },          // m, intensity per creature brightness point
+    debug: { enabled: true, freeLantern: false }       // freeLantern: a 2-slot jar even without buying the lantern
   };
   // A frozen copy of the defaults so "Reset feel" can restore them.
   TU.cfgDefaults = JSON.parse(JSON.stringify(TU.cfg));
@@ -303,10 +362,13 @@
       progress: { runs: 0, bottoms: 0, deepestM: 0, zonesReached: [false, false, false, false, false], tutorialDone: false, timeInCaveS: 0 },
       money: { cash: 0, fins: 0 },
       upgrades: { tank: 1, stamina: 1, swim: 1, battery: 1, mask: 1, rope: 1, lantern: 0 },
-      loadout: { tank: 'standard', tape: 3, flexTape: 0, lantern: false, measuringTape: true, camera: false, glowSticks: 0 },
+      loadout: { tank: 'standard', tape: 3, flexTape: 0, lantern: false, measuringTape: true, camera: false, glowSticks: 0,
+        mask: 'standard', flippers: { preset: 'paddle', shape: 0.5, width: 0.5 } },
       logbook: { entries: {} },
       leaderboards: { deepest: [], fastest: [], airLeft: [], explored: [], longest: [] },
-      settings: { muted: false, fastDrain: false, tips: true, tune: {}, hudHidden: false }
+      // graphics: 'low' | 'medium' | 'high'; autoQuality: lower the render scale when frames are slow
+      settings: { muted: false, fastDrain: false, tips: true, tune: {}, hudHidden: false, graphics: 'high', autoQuality: true },
+      ui: {} // agent D fills it (story, HUD layout, locker, stock, haul, trophies, contracts, camp)
     };
   }
   function deepMerge(base, extra) {
@@ -377,20 +439,22 @@
       return track === 'lantern' ? arr[clamp(lv, 0, arr.length - 1)] : arr[clamp(lv - 1, 0, arr.length - 1)];
     },
     // Called by main.js when a run ends. Updates totals and the 5 leaderboards (top 10 each).
-    recordRun: function (s) {
-      var d = TU.save.data, p = d.progress, now = Date.now();
-      p.runs++; p.timeInCaveS += s.timeS || 0;
+    // opts.continued: the second leg of a KEEP DIVING run (not a new dive; only the extra time counts).
+    recordRun: function (s, opts) {
+      var d = TU.save.data, p = d.progress, now = Date.now(), cont = !!(opts && opts.continued);
+      if (!cont) p.runs++;
+      p.timeInCaveS += Math.max(0, (s.timeS || 0) - (cont ? (opts.prevTimeS || 0) : 0));
       if (s.maxDepthM > p.deepestM) p.deepestM = s.maxDepthM;
       p.zonesReached[zoneOfDepth(s.maxDepthM || 0)] = true;
-      if (s.won) p.bottoms++;
+      if (s.won && !cont) p.bottoms++;
       function push(board, value, better) {
         var b = d.leaderboards[board]; b.push({ value: value, date: now, seed: s.seed, won: !!s.won });
         b.sort(function (a, c) { return better === 'high' ? c.value - a.value : a.value - c.value; });
         if (b.length > 10) b.length = 10;
       }
       push('deepest', +(s.maxDepthM || 0).toFixed(1), 'high');
-      if (s.won) push('fastest', Math.round(s.timeS), 'low');
-      if (s.won) push('airLeft', Math.round(s.airLeftBar), 'high');
+      if (s.won && !cont) push('fastest', Math.round(s.timeS), 'low');
+      if (s.won && !cont) push('airLeft', Math.round(s.airLeftBar), 'high');
       push('explored', Math.round(s.ropeM || 0), 'high');
       push('longest', Math.round(s.timeS || 0), 'high');
       TU.save.write();
@@ -413,8 +477,12 @@
   /* Module APIs with safe stubs                                         */
   /* ------------------------------------------------------------------ */
   // Every module fills its API with TU.define('cave', { ... }). Anything it leaves out keeps the stub.
+  // TU._stubs keeps a copy of each module's stub API, so main.js can put the stubs back
+  // if a non-essential module fails to start (the game keeps running without it).
+  TU._stubs = {};
   TU.define = function (name, impl) {
     var target = TU[name] || (TU[name] = {});
+    if (!TU._stubs[name]) { var copy = {}; for (var s0 in target) if (typeof target[s0] === 'function') copy[s0] = target[s0]; TU._stubs[name] = copy; }
     for (var k in impl) if (Object.prototype.hasOwnProperty.call(impl, k)) target[k] = impl[k];
     target.__defined = true;
     return target;
@@ -470,7 +538,12 @@
       depth: 0, maxDepth: 0, speed: 0, dist: 0, inWater: true, surfaced: false, surfaceY: null, mode: 'swim',
       maskFlooded: false, cold: 0, sprint: false, slow: false, narcosis: 0, silt: 0, drown: 0,
       breathPhase: 0, breathStage: 0, kickPhase: -1, wpCount: 0, siltOuts: 0, wallHits: 0, shake: 0, hitFlash: 0,
-      env: null, zone: 0, area: null
+      env: null, zone: 0, area: null,
+      // agent C's extra fields (see CONTRACT.md section 8.1)
+      tYaw: 0, tPitch: 0, airTotal: 200, airTotalMax: 200, health: 100, bleed: 0, bleedOut: 0, bloodMask: 0, maskWater: 0, maskFlood: 0, maskSlosh: 0,
+      maskClearing: false, grab: false, caught: false, currentSpeed: 0, tug: null, stuck: 0, dry: false, rag: 0, daze: 0,
+      lanternOut: false, lanternLevel: 0, headlamp: false, wristRaised: false, carried: 1, kickMul: 1, maimed: null, warm: false,
+      quake: 0, shock: 0, drownSeconds: 4, measure: null, anim: {}
     },
     lamp: { pos: v3(0, 0, 0), dir: v3(0, 0, -1), on: 0, color: null, cosOuter: Math.cos(0.42), cosInner: Math.cos(0.2), range: 14 },
     input: { keys: {}, touch: null },
@@ -502,9 +575,10 @@
 
   // audio.js (agent C) replaces these.
   TU.audio = {
-    ready: false, muted: false,
+    ready: false, muted: false, volume: 1,
     unlock: function () { },
     setMuted: function (m) { },
+    setVolume: function (v) { },
     play: function (name, params) { },
     suspend: function () { },
     resume: function () { }
@@ -517,7 +591,9 @@
     hint: function (text, dur) { },
     hideHint: function () { },
     setHudVisible: function (on) { },
-    show: function (screen) { }
+    show: function (screen) { },
+    // true while a UI screen hides the whole 3D view (the camp, the story): fx.js skips the cave render
+    coversScreen: function () { return false; }
   };
 
   // main.js replaces these (game flow). Other modules call them, never setState directly for flow.
@@ -527,6 +603,7 @@
     resume: function () { },
     restart: function () { },
     endRun: function (info) { },
+    keepDiving: function () { },
     toTitle: function () { },
     openLoadout: function () { }
   };

@@ -49,3 +49,19 @@ Old names still work: `entrance, mid, junction, pocket, pocketSurface, squeeze, 
 ## 7. Possible cfg keys (currently local constants in cave-sdf.js / cave.js)
 
 `cave.voxel` (0.4 m lattice), `cave.margin` (0.8 m rock between unrelated passages), `cave.cullDist` (75 m chunk culling), `cave.daylightRange` (46 m).
+
+## 8. main.js boot error message (lead)
+
+main.js catches every error thrown by any module's `init()` and shows "WebGL is not available in this browser". A plain bug in cave.js init (three r128 textures have no `userData`, so setting `tex.userData.own` threw) was reported to the owner as a WebGL problem. Please only show the WebGL message when creating the renderer fails, and otherwise show the real error (or "The cave failed to build" plus the message). cave-dress.js now guards those lines with `(tex.userData = tex.userData || {}).own = true`.
+
+## 9. Status of issues raised by agents C and D (all fixed in cave*.js)
+
+- Rubble render crash: every instanced mesh now has an instance color buffer.
+- Memory per dive: the old cave is fully disposed on rebuild (geometries, instance buffers, own materials and own textures, lights, the field lattice). Measured: GPU geometry count returns to the same value when the same cave is rebuilt (seed 1: 137, then 146 after A to B to A), textures stay at 11 to 13.
+- Build time: field lattice now 0.5 m (was 0.4), the wall mesh near the spawn is built first and the rest a few chunks per frame (nearest first, immediately when you get within 35 m). `TU.cave.finishBuild()` builds everything at once (tests, overview shots). Measured in the test browser on an idle machine: standard about 0.8 to 1.3 s total, hard about 1.1 to 1.4 s, easy about 0.3 to 0.6 s.
+- Software renderers (SwiftShader, llvmpipe) get a lighter rock shader automatically (`TU.caveMat.setLow`); real GPUs keep the full one.
+- Dry chambers: `features.dryChambers[i].pos` is now a standing point that is inside the open space, dry, with rock 0.9 m below. The floor next to each pool is low and even (water line + 0.3 m) so climbing out works. A dry room whose passages come in too high to fit a floor becomes an "air chamber" (open water with a big air dome, listed in `features.airPockets` with `chamber: true`).
+- spot('entrance') looks at the main line 4 m ahead (the way down out of the pool); all path spots look toward the line 5 m ahead. 4 s of kicking from it reaches about 10 m along the line in every tested cave.
+- mapData() now also has `paths: [{ id, kind: 'main'|'branch'|'loop', points: [[x,y,z]...], radius, length, collapsed }]` (agent D's preferred shape).
+- airHints entries also have `to` (Vector3, the surface point) and `dir` (unit Vector3 toward it).
+- Connectivity: a lattice flood fill over 180 caves (60 seeds x 3 difficulties) reaches the bottom chamber in all of them.

@@ -369,7 +369,7 @@
     }
     G.pieces.forEach(function (P) {
       if (P.type === 'air_pocket') waterPlane(P.node[0], P.waterY, P.node[2], 7.6, 7.6);
-      if (P.dry) waterPlane(P.center[0], P.waterY, P.center[2], P.box.x1 - P.box.x0, P.box.z1 - P.box.z0);
+      if (P.dry || P.airChamber) waterPlane(P.center[0], P.waterY, P.center[2], P.box.x1 - P.box.x0, P.box.z1 - P.box.z0);
     });
     var E = G.entrance;
     var ew = waterPlane(E.pool[0], 0, E.pool[2], 16, 16);
@@ -381,7 +381,7 @@
     sky.rotation.x = Math.PI / 2; sky.position.set(E.pool[0], 24, E.pool[2]); root.add(sky);
     var halo = new T.Sprite(own(new T.SpriteMaterial({ map: TU.tex.get('glow'), color: 0xbff3e8, transparent: true, opacity: 0.5, blending: T.AdditiveBlending, depthWrite: false, fog: false })));
     halo.scale.setScalar(26); halo.position.set(E.pool[0], 20, E.pool[2]); root.add(halo);
-    var rt = rayTexture();
+    var rt = rayTexture(); (rt.userData = rt.userData || {}).own = true;
     for (var k = 0; k < 8; k++) {
       var ray = new T.Mesh(new T.PlaneGeometry(1.0 + rand() * 1.8, 8), own(new T.MeshBasicMaterial({ map: rt, transparent: true, opacity: 0.1, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false, color: 0x9FE3D6 })));
       ray.geometry.translate(0, -4, 0); // from the opening down to the water surface (the pool hides the rest)
@@ -469,10 +469,10 @@
     var root = W.root, rand = ctx.rand, field = ctx.field, march = ctx.march;
     var group = new T.Group(); group.name = 'ancient';
     var texRockN = TU.tex.get('rockNormal');
-    var glyph = TU.tex.get('glyph').clone(); glyph.needsUpdate = true; glyph.wrapS = T.RepeatWrapping; glyph.repeat.set(4, 1);
+    var glyph = TU.tex.get('glyph').clone(); (glyph.userData = glyph.userData || {}).own = true; glyph.needsUpdate = true; glyph.wrapS = T.RepeatWrapping; glyph.repeat.set(4, 1);
     var stone = own(new T.MeshStandardMaterial({ color: 0x22282a, roughness: 0.62, metalness: 0.18, normalMap: texRockN, normalScale: new T.Vector2(1.1, 1.1), emissive: 0x4FF2D0, emissiveMap: glyph, emissiveIntensity: 0.5 }));
     var dark = own(new T.MeshStandardMaterial({ color: 0x1a1f21, roughness: 0.5, metalness: 0.4, normalMap: texRockN, normalScale: new T.Vector2(0.6, 0.6) }));
-    var glyph2 = TU.tex.get('glyph').clone(); glyph2.needsUpdate = true; glyph2.wrapS = T.RepeatWrapping; glyph2.repeat.set(10, 1);
+    var glyph2 = TU.tex.get('glyph').clone(); (glyph2.userData = glyph2.userData || {}).own = true; glyph2.needsUpdate = true; glyph2.wrapS = T.RepeatWrapping; glyph2.repeat.set(10, 1);
     var daisM = own(new T.MeshStandardMaterial({ color: 0x262b2c, roughness: 0.7, metalness: 0.1, normalMap: texRockN, emissive: 0x29F0C8, emissiveMap: glyph2, emissiveIntensity: 0.35 }));
     // main ring, slightly weathered
     var tg = new T.TorusGeometry(4.3, 0.55, 22, 140), tp = tg.attributes.position, i;
@@ -564,9 +564,10 @@
     var mg = new T.BufferGeometry(); mg.setAttribute('position', new T.Float32BufferAttribute(mp, 3));
     var motes = new T.Points(mg, own(new T.PointsMaterial({ color: 0x6FFFE9, size: 0.09, map: TU.tex.get('dot'), transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false })));
     motes.position.set(core[0], core[1], core[2]); root.add(motes);
-    var coreLight = new T.PointLight(0x3fd8ff, 1.0, 26, 1.6); coreLight.position.set(core[0], core[1], core[2]); root.add(coreLight);
-    var ringLight = new T.PointLight(0x6b5bff, 0.45, 16, 2); ringLight.position.set(core[0], fy + 1.8, core[2]); root.add(ringLight);
-    W.anim.ancient = { group: group, ring: stone, dais: daisM, core: coreM, halo: halo, halo2: halo2, motes: motes, light: coreLight, light2: ringLight, gyro: gm, pos: new T.Vector3(core[0], core[1], core[2]) };
+    // One light for the whole bottom chamber (every dynamic light costs on every lit pixel, so we keep few).
+    // The ring's violet glow comes from its emissive material instead of a second light.
+    var coreLight = new T.PointLight(0x4fc8ff, 1.2, 30, 1.6); coreLight.position.set(core[0], (core[1] + fy + 1.8) / 2, core[2]); root.add(coreLight);
+    W.anim.ancient = { group: group, ring: stone, dais: daisM, core: coreM, halo: halo, halo2: halo2, motes: motes, light: coreLight, light2: null, gyro: gm, pos: new T.Vector3(core[0], core[1], core[2]) };
   }
 
   /* ------------------------------------------------------------------ */
@@ -721,8 +722,8 @@
       an.core.rotation.y = t * 0.2; an.core.rotation.x = t * 0.13;
       an.halo.material.opacity = 0.25 + 0.15 * pul + near * 0.2;
       an.halo2.material.opacity = 0.1 + 0.08 * pul + near * 0.12;
-      an.light.intensity = 0.6 + 0.3 * pul + near * 0.7;
-      an.light2.intensity = 0.25 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.5)) + near * 0.25;
+      an.light.intensity = 0.75 + 0.35 * pul + near * 0.9;
+      if (an.light2) an.light2.intensity = 0.25 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.5)) + near * 0.25;
       if (A.gyros.length) { A.gyros[0].rotation.x = t * 0.21; A.gyros[0].rotation.y = t * 0.13; A.gyros[1].rotation.y = -t * 0.3; A.gyros[1].rotation.z = t * 0.17; }
       an.motes.rotation.y = t * 0.035; an.motes.position.y = an.pos.y + Math.sin(t * 0.3) * 0.25;
     }
@@ -752,7 +753,13 @@
       }
       m.rotation.x += rk.spin.x * dt * Math.min(1, rk.vel.length()); m.rotation.z += rk.spin.z * dt * Math.min(1, rk.vel.length());
       rk.col.c[0] = pos.x; rk.col.c[1] = pos.y; rk.col.c[2] = pos.z;
-      if (rk.vel.length() < 0.12) rk.still += dt; else rk.still = 0;
+      // a moving rock that reaches the diver hits them once (player.js turns it into an injury, or a crush)
+      var rsp = rk.vel.length();
+      if (!rk.hurt && rsp > 0.8 && TU.state.simulating()) {
+        var hx = pos.x - ppos.x, hy = pos.y - ppos.y, hz = pos.z - ppos.z, reach = rk.r + 0.35;
+        if (hx * hx + hy * hy + hz * hz < reach * reach) { rk.hurt = true; TU.emit('cave:rockHit', { r: rk.r, speed: rsp, pos: pos.clone() }); }
+      }
+      if (rsp < 0.12) rk.still += dt; else rk.still = 0;
       if (rk.still > 0.7) rk.settled = true;
     }
   }
@@ -760,7 +767,8 @@
   function frame(W) {
     if (!W.instRegions || W.noCull) return;
     var cam = TU.camera.position;
-    for (var i = 0; i < W.instRegions.length; i++) { var m = W.instRegions[i], bs = m.geometry.boundingSphere; m.visible = cam.distanceTo(bs.center) - bs.radius < 60; }
+    var cull = (TU.fx.gfx && TU.fx.gfx.cullDist) || TU.cfg.cave.cullDist || 60;
+    for (var i = 0; i < W.instRegions.length; i++) { var m = W.instRegions[i], bs = m.geometry.boundingSphere; m.visible = cam.distanceTo(bs.center) - bs.radius < cull; }
   }
   TU.caveDress = { build: build, frame: frame, animate: animate, dropRock: dropRock, rubble: rubble, resetDynamic: resetDynamic, shapes: getShapes };
 })();

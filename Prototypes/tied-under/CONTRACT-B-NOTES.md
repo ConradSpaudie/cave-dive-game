@@ -49,7 +49,7 @@ Variant logbook lines use ids like `'olm:shiny'`, `'olm:juvenile'`, `'olm:giant'
 | `creature:seen` | now also carries `variant`. |
 | `creature:caught` | now also carries `lantern` (the lanternLight() result). |
 
-Who attacks: Cave Crayfish pinch (hover within 1 m for more than 1.3 s), Remipede venom (hands within 0.5 m for 1 s), Volt Eel shock (warns inside 3.6 m, shocks inside 1.9 m), Lanternjaw bite (touch or try to catch the lure), Halo Jelly sting (when caught).
+Who attacks: Entrance Crayfish pinch (hover within 1 m for more than 1.3 s), Remipede venom (hands within 0.5 m for 1 s), Volt Eel shock (warns inside 3.6 m, shocks inside 1.9 m), Lanternjaw bite (touch or try to catch the lure), Halo Jelly sting (when caught).
 
 ## Config
 Tunables are in `TU.creatures.tuning` (local, marked TODO cfg) until the lead adds `TU.cfg.creatures`.

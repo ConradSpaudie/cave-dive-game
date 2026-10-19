@@ -526,6 +526,7 @@
     });
   }
 
+  var FILL_DEF = new T.Color(0xffe2c0), ROCK_TINT = new T.Color(0x9a8f80); // reused every frame (no allocations)
   function frame(dt) {
     if (!built) { build(); if (!built) return; }
     var st = TU.state.current;
@@ -651,7 +652,7 @@
     var hitD = lamp.hitDist == null ? 14 : lamp.hitDist;
     // light bouncing back off the rock your beam hits (strong in tight spots)
     lights.fill.intensity = on * (0.12 + 1.3 * clamp(1 - hitD / 7, 0, 1)) + lv * 0.08;
-    lights.fill.color.copy(lamp.color || new T.Color(0xffe2c0)).lerp(new T.Color(0x9a8f80), 0.35);
+    lights.fill.color.copy(lamp.color || FILL_DEF).lerp(ROCK_TINT, 0.35);
     lights.fill.position.set(rig.lampDir.x * 0.6, 0.3, -1); lights.fill.target.position.set(0, -0.2, 0);
     lights.spill.position.copy(rig.lampPos).add(V(0, 0.02, 0.02)); lights.spill.intensity = P.headlamp ? 0 : on * 0.35;
     lights.shock.intensity = (P.shock || 0) * (0.5 + Math.random() * 2.5);

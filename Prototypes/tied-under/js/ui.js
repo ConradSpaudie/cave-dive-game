@@ -54,7 +54,7 @@
   K.simulating = function () { return TU.state.simulating(); };
   // Readable name of a KeyboardEvent.code.
   K.keyName = function (code) {
-    var map = { Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', Escape: 'Esc', Tab: 'Tab', Enter: 'Enter',
+    var map = { Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', Escape: 'Esc', Tab: 'Tab', Enter: 'Enter', BracketLeft: '[', BracketRight: ']',
       ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Mouse: 'Mouse', MouseLeft: 'Click', Wheel: 'Wheel', AltLeft: 'Alt', Backquote: '`' };
     if (map[code]) return map[code];
     if (/^Key[A-Z]$/.test(code)) return code.slice(3);
@@ -139,6 +139,7 @@
       bled: 'You bled out. In a cave. With tape in your pocket. The tape was for that.',
       crushed: 'Rocks one, you zero. The cave was here first.',
       quit: 'Called it early. Smartest thing you\'ve done all week.',
+      endless: 'You went PAST the bottom. On purpose. I need to sit down.',
       other: 'Well. That happened. Paperwork for me, a lesson for you.'
     }
   };
@@ -195,6 +196,9 @@
     '.ui-checks label{display:flex;gap:8px;align-items:center;cursor:pointer;min-height:32px}',
     '.ui-checks input{accent-color:var(--hud);width:17px;height:17px}',
     '.ui-set-adv{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}',
+    '.ui-gfx{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:16px 0 4px;font-size:13.5px;color:var(--ink-dim)}',
+    '.ui-gfx-l{min-width:110px} .ui-gfx-a{display:flex;gap:8px;align-items:center;cursor:pointer;min-height:32px} .ui-gfx-a input{accent-color:var(--hud);width:17px;height:17px}',
+    '.ui-gfx-n{flex-basis:100%;font-size:12px;color:var(--ink-dim);opacity:.8}',
     '.ui-set-adv summary{cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:var(--hud-dim);min-height:32px;display:flex;align-items:center}',
     '.ui-keys{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:13.5px;color:var(--ink-dim);align-items:center}',
     '.ui-keys > span:nth-child(odd){display:flex;flex-wrap:wrap;gap:4px}',
@@ -503,6 +507,16 @@
     slider(g, 'Look sensitivity', 0.3, 2.5, 0.05, cfg.swim.sens, function (v) { return (+v).toFixed(2); }, function (v) { cfg.swim.sens = v; saveTune(); });
     slider(g, 'Field of view', 60, 95, 1, cfg.swim.fov, function (v) { return Math.round(v) + '°'; }, function (v) { cfg.swim.fov = v; saveTune(); });
     slider(g, 'Volume', 0, 100, 1, Math.round(ui.settings.volume * 100), function (v) { return Math.round(v) + '%'; }, function (v) { ui.settings.volume = v / 100; applyVolume(ui.settings.volume); K.write(); });
+    // Graphics quality (fx.js): Low / Medium / High, plus the automatic resolution scaler.
+    var gq = TU.fx.quality ? TU.fx.quality() : null;
+    if (gq) {
+      var gr = TU.el('div', { className: 'ui-gfx', html: '<span class="ui-gfx-l">Graphics</span><div class="ui-btnrow" role="radiogroup" aria-label="Graphics quality">' +
+        ['low', 'medium', 'high'].map(function (q) { return '<button class="ui-chip' + (gq.name === q ? ' ui-sel' : '') + '" data-gfx="' + q + '" role="radio" aria-checked="' + (gq.name === q) + '">' + q.charAt(0).toUpperCase() + q.slice(1) + '</button>'; }).join('') +
+        '</div><label class="ui-gfx-a"><input type="checkbox" id="ui-o-autoq"' + (gq.auto ? ' checked' : '') + '> Auto adjust resolution</label>' +
+        '<small class="ui-gfx-n">' + (gq.software ? 'No GPU found: running the light version.' : 'Low turns off shadows and draws less far. Auto lowers the resolution if the game slows down.') + '</small>' }, el);
+      Array.prototype.forEach.call(gr.querySelectorAll('[data-gfx]'), function (b) { b.addEventListener('click', function () { TU.fx.setQuality(b.getAttribute('data-gfx')); el.innerHTML = ''; renderFeel(el); }); });
+      gr.querySelector('#ui-o-autoq').addEventListener('change', function (e) { TU.fx.setAutoQuality(e.target.checked); });
+    }
     var c = TU.el('div', { className: 'ui-checks', html:
       '<label><input type="checkbox" id="ui-o-rm"> Reduce motion</label>' +
       '<label><input type="checkbox" id="ui-o-mute"> Mute audio</label>' +
@@ -550,8 +564,10 @@
       }
     } catch (e) { out = []; }
     if (!out.length) return FALLBACK_KEYS;
-    // UI keys are owned here, so always list them.
-    out.push(['Screens'], [['Tab'], 'Hold or tap: wrist computer and hologram map'], [['KeyJ'], 'Waterproof slate (logbook)'], [['Escape'], 'Pause and settings']);
+    // UI keys are owned here: list them if the bindings did not already.
+    var has = {}; out.forEach(function (r) { if (r.length > 1) r[0].forEach(function (k) { has[k] = true; }); });
+    var extra = [[['Tab'], 'Hold or tap: wrist computer and hologram map'], [['KeyJ'], 'Waterproof slate (logbook)'], [['Escape'], 'Pause and settings']].filter(function (r) { return !has[r[0][0]]; });
+    if (extra.length) out.push(['Screens']); extra.forEach(function (r) { out.push(r); });
     return out;
   };
   function renderControls(el) {
@@ -559,7 +575,7 @@
     el.innerHTML = '<div class="ui-keys">' + rows.map(function (r) {
       if (r.length === 1) return '<h4>' + K.esc(String(r[0]).toUpperCase()) + '</h4>';
       return '<span>' + r[0].map(function (c) { return '<kbd>' + K.esc(K.keyName(c)) + '</kbd>'; }).join('') + '</span><span>' + K.esc(r[1]) + '</span>';
-    }).join('') + '</div><p class="ui-note">Click the view to lock the mouse. While the wrist is up: drag to spin the hologram, scroll to zoom, <kbd>[</kbd> <kbd>]</kbd> pick a waypoint, <kbd>N</kbd> renames it.</p>';
+    }).join('') + '</div><p class="ui-note">Click the view to lock the mouse. Typing a waypoint name never moves the diver.</p>';
   }
   var resetArm = 0;
   function renderGame(el) {
@@ -610,6 +626,15 @@
   }
   function bindRunLog() {
     TU.on('run:start', function (e) { K.run = newRunLog(e.run); });
+    // KEEP DIVING: a fresh log for the next leg, so only what happens after the bottom pays again.
+    TU.on('run:continue', function (e) {
+      var prev = K.run, log = newRunLog(e.run), inv = TU.player.inventory || {};
+      log.continued = true; log.leg = e.leg || 2;
+      log.startZone = U.zoneOfDepth(TU.player.state.maxDepth || 0);
+      log.loadout = { tape: inv.tape || 0, flexTape: inv.flexTape || 0, glowSticks: inv.glowSticks || 0 };
+      if (prev) log.difficulty = prev.difficulty;
+      K.run = log;
+    });
     TU.on('creature:logged', function (e) {
       if (!K.run || !K.simulating()) return;
       K.run.logged.push({ speciesId: e.speciesId, sizeM: e.sizeM, first: e.first, record: e.record, t: TU.run ? TU.run.t : 0 });
@@ -628,6 +653,7 @@
   /* ------------------------------------------------------------------ */
   function endKind(s) {
     var r = String(s.reason || '').toLowerCase();
+    if (s.won && (s.endless || r === 'endless')) return 'endless';
     if (s.won) return 'bottom';
     if (r === 'drowned' || r === 'drown' || r === 'air') return 'drowned';
     if (/bled|bleed|blood|injur|cut/.test(r)) return 'bled';
@@ -641,6 +667,7 @@
     bled: ['DIVE LOG · LOST', 'You bled out', 'A cut you never taped. Out here the water carries it away faster than you think.'],
     crushed: ['DIVE LOG · LOST', 'Crushed', 'The cave moved. You were in the way. Quakes come more often the deeper you go.'],
     quit: ['DIVE LOG · CALLED', 'You called the dive', 'You followed the rope home with something left in the tank. That counts.'],
+    endless: ['DIVE LOG · PAST THE BOTTOM', 'Back from below the map', 'You touched the bottom, kept going, and still found the rope home.'],
     other: ['DIVE LOG', 'Dive over', 'The dive is over.']
   };
   // Funny awards picked from real stats (Hub Design, post-dive flow step 4).
@@ -782,7 +809,13 @@
     TU.on('player:light', function (e) { if (e.reason === 'dead') msg('LIGHT DEAD. Follow the rope or find the glow.', 4); else if (e.reason === 'empty') msg('LIGHT DEAD'); else msg(e.on ? 'LIGHT ON' : 'LIGHT OFF', 1.4); });
     TU.on('player:blocked', function (e) { if (e.kind === 'exit') msg('Open water behind you. The dive is the other way.', 3); });
     TU.on('player:tankSwitch', function (e) { msg('TANK ' + (e.from + 1) + ' EMPTY. SWITCHED TO TANK ' + (e.to + 1) + '.', 3); });
-    TU.on('player:cut', function () { msg('CUT. Tape it before it gets worse.', 3); });
+    TU.on('player:cut', function (e) { if (!(e && e.injury && /crayfish|lanternjaw|bite|pinch/.test(String(e.injury.source)))) msg('CUT. Tape it before it gets worse.', 3); });
+    // Creature attacks (agent B): a short shout, the player module does the damage.
+    var ATTACK_MSG = { pinch: 'PINCHED. Back off the crayfish.', bite: 'BITTEN. Tape it before it gets worse.', shock: 'SHOCKED. Your light is stuttering.', venom: 'VENOM. Your eyes are swimming.', sting: 'STUNG. The jelly did not like the jar.' };
+    TU.on('creature:attack', function (e) { if (K.simulating() && ATTACK_MSG[e.kind]) msg(ATTACK_MSG[e.kind], 3); });
+    TU.on('creature:warn', function (e) { if (K.simulating()) msg(e.kind === 'shock' ? 'Something crackles in the dark...' : 'Claws are up. Do not hover.', 2.2); });
+    TU.on('player:crushed', function () { msg('CRUSHED', 3); });
+    TU.on('cave:collapse', function () { if (K.simulating()) msg('Something collapsed behind you.', 3.5); });
     TU.on('treasure:found', function (e) { msg('FOUND: ' + (e.name || e.kind || 'something') + (e.value ? ' · ' + K.money(e.value) : ''), 3); });
     TU.on('quake', function () { msg('The cave shakes.', 2.5); });
     TU.on('ui:msg', function (e) { msg(e.text, e.dur); });
@@ -797,7 +830,9 @@
     // Extra API (agent D): open screens from tests or other modules.
     openCamp: function (station) { openCamp(station || 'dive'); },
     openSettings: openSettings,
-    openStory: storyOpen
+    openStory: storyOpen,
+    // The camp (state 'loadout') and the story are opaque full-screen pages: main.js skips the 3D render.
+    coversScreen: function () { return overlay === 'story' || (TU.state.is('loadout') && !overlay); }
   });
 
   TU.addSystem('ui', {

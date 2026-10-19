@@ -25,11 +25,11 @@
   var clamp = U.clamp, lerp = U.lerp, smooth = U.smooth;
 
   var CELL = 8;              // m, generator cell size
-  var RES = 20;              // lattice steps per cell
+  var RES = 16;              // lattice steps per cell
   var VOX = CELL / RES;      // m between lattice points (0.4 m)
   var ROCK = 3;              // field value used for cells with no piece (solid rock)
   var AIR = -3;              // field value above the entrance (open sky)
-  var MARGIN = 0.8;          // m of rock kept on every closed cell face (walls between unrelated passages)
+  var MARGIN = (TU.cfg.cave && TU.cfg.cave.margin) || 0.8; // m of rock kept on every closed cell face (walls between unrelated passages)
   var SKIP = 2.7;            // m, primitives farther than this from a point are ignored (speed)
   var DW = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0], [0, 1, 0], [0, -1, 0]]; // dir -> world vector
   var DX = [0, 1, 0, -1, 0, 0], DY = [1, 0, -1, 0, 0, 0], DD = [0, 0, 0, 0, -1, 1];
@@ -145,8 +145,8 @@
     var j = function (v, s) { return v * (1 + 0.13 * hs(P.id, s, 3, 71)); };
     var t = P.type, v = P.variant % 5;
     if (t === 'squeeze') {
-      if (P.variant % 2 === 0) return { r: [0.95, 0.72, 0.66], fl: 0.2, flv: 0.9, sq: 'bed' };   // low bedding plane
-      return { r: [0.62, 1.05, 1.0], fl: 0.2, flv: 0.9, sq: 'crack' };                             // tall narrow crack
+      if (P.variant % 2 === 0) return { r: [1.0, 0.8, 0.72], fl: 0.2, flv: 0.9, sq: 'bed' };   // low bedding plane
+      return { r: [0.7, 1.1, 1.05], fl: 0.2, flv: 0.9, sq: 'crack' };                             // tall narrow crack
     }
     if (t === 'shaft_down' || t === 'shaft_up') { var r = j(2.0, 1); return { r: [r, r * 0.95, r * 0.95], fl: 0.2, flv: 0.8 }; }
     if (t === 'silt_floor') return { r: [j(2.4, 1), j(1.7, 2), j(1.15, 3)], fl: 1.0, flv: 0.78 };
@@ -155,8 +155,8 @@
     if (t === 'junction_t' || t === 'junction_x') return { r: [j(2.1, 1), j(1.9, 2), j(1.45, 3)], fl: 0.6, flv: 0.78 };
     if (v === 0) return { r: [j(1.95, 1), j(1.95, 2), j(1.6, 3)], fl: 0.35, flv: 0.82 };                 // round phreatic tube
     if (v === 1) return { r: [j(1.7, 1), j(1.8, 2), j(1.2, 3)], fl: 0.3, flv: 0.8, keyhole: true };      // keyhole
-    if (v === 2) return { r: [j(2.4, 1), j(1.2, 2), j(0.95, 3)], fl: 0.75, flv: 0.75 };                   // flat bedding passage
-    if (v === 3) return { r: [j(1.25, 1), j(2.3, 2), j(1.9, 3)], fl: 0.6, flv: 0.8 };                    // tall canyon
+    if (v === 2) return { r: [j(2.4, 1), j(1.45, 2), j(1.1, 3)], fl: 0.75, flv: 0.8 };                   // flat bedding passage
+    if (v === 3) return { r: [j(1.4, 1), j(2.3, 2), j(1.9, 3)], fl: 0.6, flv: 0.8 };                    // tall canyon
     return { r: [j(2.1, 1), j(1.85, 2), j(1.4, 3)], fl: 0.6, flv: 0.78 };
   }
 
@@ -366,42 +366,71 @@
       }
       P.floorY = floorY;
     }
-    // arms from every port into the room
+    // arms from every port into the room: a tube that leaves the port and bends toward the middle
+    // until it is well inside the room's main volume (ports in corner cells or under a raised dry
+    // floor would otherwise end in rock and seal the room)
     P.arms = [];
+    var mainE = P.start ? P.groups[0][0] : main[0];
+    var wyDry = P.dry ? dryWaterY(P) : null;
     P.ports.forEach(function (port, k) {
-      var S = stubPrims(port, P), pr = port.prof.r;
-      var toC = vsub([cx, S.end[1], cz], S.end); toC[1] = 0;
-      var q;
-      if (port.vertical) q = vadd(S.end, vmul(S.n, 3.0));
-      else q = vadd(vadd(S.end, vmul(S.n, 2.6)), vmul(toC, 0.22));
-      var pts = curvePts(S.end, vadd(S.end, vmul(S.n, 1.2)), vlerp(q, S.end, 0.3), q, 4);
+      var S = stubPrims(port, P), pr = port.prof.r, n = S.n;
+      var q0 = vadd(S.end, vmul(n, port.vertical ? 2.4 : 1.8));
+      var fy = P.start ? -5.5 : P.floorY;
+      var tgtY = Math.max(q0[1], fy + 1.9);
+      if (port.vertical && n[1] < 0) tgtY = Math.min(q0[1], Math.max(fy + 2.4, q0[1] - 3)); // from the ceiling: come down
+      if (wyDry != null) tgtY = port.vertical && n[1] > 0 ? Math.max(q0[1], wyDry - 2.0) : Math.min(tgtY, wyDry - 1.6);
+      var goal = [cx, tgtY, cz], T = null;
+      for (var f = 0.15; f <= 0.96 && !T; f += 0.1) {
+        var c = [lerp(q0[0], cx, f), tgtY, lerp(q0[2], cz, f)];
+        if (dEllipsoid(mainE, c[0], c[1], c[2]) < -1.7) T = c;
+      }
+      if (!T) T = [lerp(q0[0], cx, 0.95), tgtY, lerp(q0[2], cz, 0.95)];
+      var pts = curvePts(S.end, q0, vlerp(q0, T, 0.6), T, 5);
       var grp = [S.cap];
       var big = [pr[0] * 1.25, pr[1] * 1.2, pr[2] * 1.1];
       chain(pts, function (u) { return mixR(pr, big, u); }, port.prof.fl, port.prof.flv, port.hz, grp);
       if (P.dry) P.post.push(grp); else P.groups.push(grp);
-      P.arms.push({ port: port, pts: [port.pos].concat(pts), q: q });
+      P.arms.push({ port: port, pts: [port.pos].concat(pts), q: T });
     });
     if (P.dry) buildDryRoom(G, P);
   }
 
   // A dry chamber: a pool where the passages come in, and a rock floor above the water line.
   // If the room is tall enough, a raised ledge with a ramp up one side and a cliff to fall from.
+  // Water line of a dry chamber: just above every side passage that comes in.
+  function dryWaterY(P) {
+    var wy = P.box.y0 + 2.6;
+    P.ports.forEach(function (p) { if (!p.vertical) wy = Math.max(wy, p.pos[1] + p.prof.r[1] + 0.4); });
+    return wy;
+  }
   function buildDryRoom(G, P) {
     var b = P.box, cx = P.center[0], cz = P.center[2];
-    var wy = b.y0 + 2.6;
-    P.ports.forEach(function (p) { if (!p.vertical) wy = Math.max(wy, p.pos[1] + p.prof.r[1] + 0.4); });
+    var wy = dryWaterY(P);
+    // A passage that comes in high up would put the water line (and the floor) near the ceiling
+    // and seal the room. Then it becomes an "air chamber" instead: open water with a big dome of
+    // air at the top where you can surface and breathe (still an air source for the generator).
+    if (b.y1 - 1.0 - (wy + 0.38) < 3.2) {
+      P.dry = false; P.airChamber = true;
+      P.waterY = Math.min(wy - 0.1, b.y1 - 2.8);
+      P.airBox = { x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1, z0: b.z0, z1: b.z1 };
+      P.groups = P.groups.concat(P.post); P.post = [];
+      P.warm = hf(P.id, 8, 0, 51) < 0.5;
+      return;
+    }
     P.waterY = wy;
-    var floorBase = wy + 0.38;
+    var floorBase = wy + 0.3;
     P.floorBase = floorBase;
     // pools: at each arm end, open water reaching the floor
     var pools = [], pc = [0, 0];
     P.arms.forEach(function (a) {
-      var q = a.q, pp = [q[0], wy - 1.3, q[2]];
-      pools.push(ellipsoid(pp, 3.0, 1.75, 2.3, 3.0));
+      // a pool shaft from the end of the passage up through the floor, with open water around it
+      var q = a.q, pp = [q[0], wy - 1.0, q[2]];
+      pools.push(ellipsoid(pp, 3.1, 2.2, 2.4, 3.1));
+      if (q[1] < wy - 3.2) pools.push(capsule([q[0], q[1], q[2]], [q[0], wy - 1.6, q[2]], [2.0, 2.0, 2.0], [2.4, 2.4, 2.4], 0, 0.8, [1, 0, 0]));
       pc[0] += q[0]; pc[1] += q[2];
     });
     if (pools.length) { pc[0] /= pools.length; pc[1] /= pools.length; } else pc = [cx, cz];
-    P.pools = pools;
+    P.pools = pools.filter(function (q) { return q.k === 1; }); // the pool basins (shafts excluded)
     P.post.push(pools);
     // ledge axis: from the pools toward the far side of the room
     var ax = [cx - pc[0], cz - pc[1]], al = Math.sqrt(ax[0] * ax[0] + ax[1] * ax[1]);
@@ -411,7 +440,9 @@
     var extA = Math.abs(ax[0]) * ex + Math.abs(ax[1]) * ez, extB = Math.abs(bx[0]) * ex + Math.abs(bx[1]) * ez;
     var head = b.y1 - 1.0 - floorBase; // rough headroom in the middle of the room
     var H = 0;
-    if (head >= 7.5) H = clamp(head - 4.4, 3, 6);
+    var spread = 0;
+    P.arms.forEach(function (a) { P.arms.forEach(function (b2) { spread = Math.max(spread, Math.hypot(a.q[0] - b2.q[0], a.q[2] - b2.q[2])); }); });
+    if (head >= 7.5 && spread < 7) H = clamp(head - 4.4, 3, 6); // a ledge only if it cannot wall off a pool
     P.ledge = null;
     var a0 = extA * 0.12, rampLen = 0, b1 = extB * 0.22;
     if (H > 0) {
@@ -422,12 +453,18 @@
       var dxp = x - cx, dzp = z - cz;
       var pa = dxp * ax[0] + dzp * ax[1], pb = dxp * bx[0] + dzp * bx[1];
       // rough breakdown floor: slabs, humps and small steps
-      var h = floorBase + 0.22 * N.n3(x * 0.3, 3.3, z * 0.3) + 0.12 * N.n3(x * 0.9, 1.7, z * 0.9) + 0.1 * Math.abs(N.n3(x * 0.55 + 9, 5.1, z * 0.55));
+      // (low and even next to the pools, so you can climb out of the water onto it)
+      var dp = 1e9;
+      for (var pi2 = 0; pi2 < P.pools.length; pi2++) { var pq = P.pools[pi2]; dp = Math.min(dp, Math.hypot(x - pq.cx, z - pq.cz)); }
+      var rough = 0.2 + 0.8 * smooth(3.5, 7.0, dp);
+      var h = floorBase + rough * (0.22 * N.n3(x * 0.3, 3.3, z * 0.3) + 0.12 * N.n3(x * 0.9, 1.7, z * 0.9) + 0.1 * Math.abs(N.n3(x * 0.55 + 9, 5.1, z * 0.55)));
       if (H > 0) {
-        var cliff = H * smooth(a0, a0 + 0.7, pa);
+        // never raise the ledge or its ramp over a pool (it would seal the water in)
+        var keep = smooth(3.6, 6.0, dp);
         var ramp = H * clamp((pa - (a0 - rampLen)) / rampLen, 0, 1);
         var t = smooth(b1, b1 + 0.8, pb);
-        h += lerp(cliff, ramp, t) + 0.08 * N.n3(x * 1.3, 7.7, z * 1.3) * smooth(0.2, 1, (cliff + ramp) / H);
+        var cliff = H * smooth(a0, a0 + 0.7, pa);
+        h += keep * (lerp(cliff, ramp, t) + 0.08 * N.n3(x * 1.3, 7.7, z * 1.3) * smooth(0.2, 1, (cliff + ramp) / H));
       }
       return h;
     };

@@ -126,7 +126,7 @@ CHECKS = r"""() => {
     if (C.isDry(below)) fail('air pocket ' + a.id + ': below surface dry');
     if (!C.contains(above, 0.25)) fail('air pocket ' + a.id + ': no air space above the surface');
     const head = new T.Vector3(a.pos.x, a.surfaceY + 0.9, a.pos.z);
-    if (!C.contains(head, 0.3)) fail('air pocket ' + a.id + ': dome too low for your head');
+    if (!a.chamber && !C.contains(head, 0.3)) fail('air pocket ' + a.id + ': dome too low for your head');
     if (C.waterSurfaceY(below) == null) fail('air pocket ' + a.id + ': no surfaceY under it');
   });
   out.dry = F.dryChambers.map(d => {
@@ -182,6 +182,11 @@ CHECKS = r"""() => {
     if (np.wallDist < 0.25 && n !== 'pocketSurface') fail('spot ' + n + ' too close to rock: ' + np.wallDist.toFixed(2));
   });
   ['entrance', 'mid', 'deep', 'end', 'branch', 'branchEnd'].forEach(n => { if (!C.spot(n)) fail('missing required spot ' + n); });
+  // run_test.py: 4 s of kicking from the entrance spot must get past 7 m along the main line
+  __debug.teleport('entrance'); const sw = __debug.sim(4, ['KeyW']); out.entranceSwim = +sw.s.toFixed(1);
+  if (!(sw.s > 7.5)) fail('entrance swim reached only s=' + sw.s.toFixed(1));
+  // dry chambers: the standing point is both inside the open space and dry, with floor under it
+  F.dryChambers.forEach(d => { if (!C.contains(d.pos, 0.3) || !C.isDry(d.pos)) fail(d.id + ': pos is not a dry open point'); });
   const end = C.spot('end'), b = F.bottom;
   if (end) { const d = end.pos.distanceTo(b.pos); if (d < b.radius + 1 || d > 12) fail('end spot distance to core ' + d.toFixed(1)); if (C.raycast(end.pos, b.pos.clone().sub(end.pos).normalize(), d) < d - 0.5) fail('end spot cannot see the core'); }
   if (C.features.siltAreas.length === 0) fail('no silt area');
@@ -346,6 +351,17 @@ def main():
                 fails.append("seed %d: collapse did not block the passage" % seed)
 
         page.evaluate(RESUME)
+        # memory: a new dive must free the old cave (same counts after A -> B -> A)
+        mem = []
+        for seed, diff in [(1, "standard"), (12345, "hard"), (1, "standard"), (7, "easy"), (1, "standard")]:
+            mem.append(page.evaluate("""(() => { __debug.start({seed: %d, difficulty: '%s'}); __debug.TU.cave.finishBuild();
+              const F = __debug.TU.fx; F._render(); const m = __debug.TU.renderer.info.memory;
+              let n = 0; __debug.TU.scene.traverse(o => { if (o.geometry) n++; });
+              return { geometries: m.geometries, textures: m.textures, sceneGeometries: n, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null, build: __debug.TU.cave.stats() }; })()""" % (seed, diff)))
+        print("\nmemory per dive:", json.dumps([{k: m[k] for k in ("geometries", "textures", "sceneGeometries", "heapMB")} for m in mem]))
+        print("build ms (seed 1 standard, then hard, easy):", [(m["build"]["ms"], m["build"]["sampleMs"], m["build"]["meshMs"], m["build"]["dressMs"]) for m in mem])
+        if mem[4]["geometries"] > mem[0]["geometries"] + 40 or mem[4]["textures"] > mem[0]["textures"] + 4:
+            fails.append("memory grows between dives: %s" % json.dumps([{k: m[k] for k in ("geometries", "textures")} for m in mem]))
         browser.close()
         if not quick:
             screenshots(p, url, errors)

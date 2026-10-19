@@ -291,8 +291,9 @@
     }
     var flood = typeof P.maskFlood === 'number' ? P.maskFlood : (P.maskFlooded ? 0.38 : 0);
     var w = [];
-    if (untaped) w.push(['bad', 'BLEEDING' + (untaped > 1 ? ' x' + untaped : '') + ' · ' + K.keyName('KeyX') + ' TO TAPE']);
-    if (flood > 0.01) w.push(['bad', 'MASK FLOODING · LOOK UP AND EXHALE']);
+    if (untaped) w.push(['bad', ((P.bleedOut || 0) > 0 ? 'BLEEDING OUT' : 'BLEEDING') + (untaped > 1 ? ' x' + untaped : '') + ' · ' + K.keyName('KeyX') + ' OR 1 TO TAPE']);
+    if ((P.health == null ? 100 : P.health) < 40) w.push([P.health < 20 ? 'bad' : 'warn', 'HEALTH ' + Math.round(P.health)]);
+    if (flood > 0.01) w.push(['bad', 'MASK FLOODING · HOLD ' + K.keyName('KeyM') + ' TO CLEAR']);
     if (names.length) w.push(['warn', names.join(' · ')]);
     if (P.airTotal <= 0) w.push(['bad', 'NO AIR']); else if (P.airTotal < cfg.air.criticalAir) w.push(['bad', 'AIR CRITICAL']); else if (P.airTotal < cfg.air.lowAir) w.push(['warn', 'LOW AIR']);
     var key = w.map(function (x) { return x.join(':'); }).join('|');

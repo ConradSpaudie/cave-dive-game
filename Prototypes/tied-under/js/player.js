@@ -27,23 +27,15 @@
   'use strict';
   if (!window.THREE) return;
   var TU = window.TU, T = THREE, U = TU.util, N = TU.noise, cfg = TU.cfg;
-  var clamp = U.clamp, lerp = U.lerp, smooth = U.smooth, REDUCED = U.reducedMotion;
+  var clamp = U.clamp, lerp = U.lerp, smooth = U.smooth;
+  // Reduce motion is read live (the settings screen changes TU.util.reducedMotion while you play).
+  function reduced() { return !!U.reducedMotion; }
 
-  // Tunables for the new systems. TODO cfg: move these into TU.cfg (ask the lead).
+  // Tunables for the player systems. They live in TU.cfg (core.js, units in comments there);
+  // C is just a short name for those sections.
   var C = {
-    crawl: { radius: 1.3, floorDist: 1.0, pull: 3.4, interval: 1.0, pullTime: 0.42, drag: 1.35, silt: 0.4 },          // m, m, m/s^2, s, s, x, x
-    squeeze: { radius: 0.82, tuckRadius: 1.4, stuckRate: 0.32, wiggle: 0.28, pop: 0.5 },                              // m, m, 1/s, per wiggle, m/s
-    walk: { gravity: 9.8, speed: 1.7, run: 2.8, crouchSpeed: 0.7, accel: 9, airAccel: 1.5, jump: 3.7, eye: 1.55, crouchEye: 0.8, stepLen: 0.75 }, // m/s^2, m/s, m/s, m/s, 1/s, 1/s, m/s, m, m, m
-    fall: { minH: 2.2, sprainH: 4.5, breakH: 7.5, maimH: 11, dmgPerM: 7, tumbleV: -7.5, downTime: 2.2, getUp: 0.9, waterSafeH: 14 }, // m, m, m, m, health per m, m/s, s, s, m
-    grab: { reach: 1.05, damp: 7, drain: 3.5 },        // m, 1/s velocity damping, stamina/s while holding in a current
-    current: { strong: 1.0, caught: 1.45, panic: 7, floodRate: 0.22, tugGain: 0.085, tugDecay: 0.2, shelter: 5, failKick: 1.3 }, // m/s, m/s, per s, level/s, per press, per s, s, x
-    injury: { cutImpact: 1.45, cutChance: 0.6, bleedHealth: 1.8, bleedPanic: 2.2, tapeTime: 1.5, ductPeel: [70, 140], minHealth: 5, sprainHeal: 150 }, // m/s, 0..1, hp/s per severity, per s, s, s, hp, s
-    mask: { floodImpact: 1.8, floodChance: 0.55, clearRate: 0.42, clearAir: 3.0, drain: 0.6, panic: 3.5 },            // m/s, 0..1, level/s, bar/s, level/s out of water, per s
-    depth: { staminaLoss: 0.35, from: 20, to: 200, breathLoss: 0.4 }, // fraction of stamina max lost, m, m, fraction of drown time lost
-    cold: { drain: 1.6, warmRegen: 3.5, warmAt: 21 },  // stamina/s at full cold, stamina/s, degrees C
-    panic: { highFrom: 60, staminaLoss: 0.1, cut: 12, cutScale: 26, shock: 24, bite: 30, quake: 9, fall: 14 }, // panic, stamina/s per panic point, added
-    tank: { pickupDist: 1.8, dropStamina: 15, sink: 0.55 }, // m, stamina, m/s
-    lantern: { range: 7.5, perBright: 0.45 }           // m, intensity per creature brightness point
+    crawl: cfg.crawl, squeeze: cfg.squeeze, walk: cfg.walk, fall: cfg.fall, grab: cfg.grab, current: cfg.current,
+    injury: cfg.injury, mask: cfg.mask, depth: cfg.depth, cold: cfg.cold, panic: cfg.panic, tank: cfg.tank, lantern: cfg.lantern, rocks: cfg.rocks
   };
 
   var P = TU.player.state;          // the shared state object (created in core.js, filled here)
@@ -52,7 +44,8 @@
   TU.player.input.touch = touch;
   var lamp = TU.player.lamp;
   lamp.hitDist = 14; lamp.headlamp = false;
-  var run = { t: 0, lowLightWarned: false, narcWarned: false, exitWarned: false, siltWas: false, kickTimer: 0, pullTimer: 0, sprintLock: false, breath: { ph: 0, t: 0, period: 4.8 }, drownSent: false, demo: 1, swimMul: 1, staminaMul: 1, regenMul: 1, batteryDrain: 100 / 480, baseStaminaMax: 100, darkHinted: false, lanternHinted: false, caughtHinted: false };
+  var run = { t: 0, lowLightWarned: false, narcWarned: false, exitWarned: false, siltWas: false, kickTimer: 0, pullTimer: 0, sprintLock: false, breath: { ph: 0, t: 0, period: 4.8 }, drownSent: false, demo: 1, swimMul: 1, staminaMul: 1, regenMul: 1, batteryDrain: 100 / 480, baseStaminaMax: 100, darkHinted: false, lanternHinted: false, caughtHinted: false,
+    mask: cfg.masks.standard, finSpeed: 1, finStamina: 1, finSqueeze: 1, dark: false, darkT: 0, bledSent: false, bleedHinted: false };
   var hint = {};                     // cave lookup cache for the player
   var spot, bounce, lampRig, lampDir = new T.Vector3(0, 0, -1), lampPos = new T.Vector3(), lanternLight;
   var rope = { pts: [], reel: new T.Vector3(), mesh: null, anchor: null };
@@ -135,10 +128,28 @@
   function hasHeadlamp(r) {
     if (dbg.headlamp !== null) return dbg.headlamp;
     var ld = (r && r.loadout) || {};
-    return !!(ld.headlamp || ld.maskLamp || (ld.mask && (ld.mask.lamp === 'headlamp' || ld.mask.headlamp)));
+    return !!(ld.headlamp || ld.maskLamp || maskId(ld) === 'headlamp' || (ld.mask && typeof ld.mask === 'object' && (ld.mask.lamp === 'headlamp' || ld.mask.headlamp)));
+  }
+  // The mask picked in the camp loadout ('standard' | 'tight' | 'wide' | 'headlamp'), if its upgrade level is owned.
+  var MASK_NEED = { standard: 1, tight: 2, wide: 3, headlamp: 4 };
+  function maskId(ld) {
+    var id = ld && ld.mask;
+    if (id && typeof id === 'object') id = id.lamp === 'headlamp' || id.headlamp ? 'headlamp' : id.type || 'standard';
+    if (!cfg.masks[id]) return 'standard';
+    return TU.progress.level('mask') >= (MASK_NEED[id] || 1) ? id : 'standard';
+  }
+  // Flippers from the loadout: a preset plus the locker's shape and width tokens (each 0..1, about +-3% in total).
+  function applyFlippers(ld) {
+    var f = (ld && ld.flippers) || {}, pr = cfg.flippers[f.preset] || cfg.flippers.paddle;
+    var shape = clamp(f.shape == null ? 0.5 : f.shape, 0, 1) - 0.5, width = clamp(f.width == null ? 0.5 : f.width, 0, 1) - 0.5;
+    run.finSpeed = pr.speed * (1 + shape * 0.04 + width * 0.02);
+    run.finStamina = pr.stamina * (1 - shape * 0.04 - width * 0.02);
+    run.finSqueeze = (pr.squeeze || 1) * (1 - width * 0.1);
   }
   function reset(r) {
     var lo = cfg.loadouts[(r && r.loadout && r.loadout.tank) || 'standard'] || cfg.loadouts.standard;
+    run.mask = cfg.masks[maskId(r && r.loadout)] || cfg.masks.standard;
+    applyFlippers(r && r.loadout);
     var tankBar = cfg.air.tankBar * (TU.progress.value('tank', 'airMinutes') || 10) / 10;
     rand = TU.rng((r && r.seed) || 1, 40).fn();
     P.tanks = []; for (var i = 0; i < lo.tanks; i++) P.tanks.push({ bar: tankBar, max: tankBar, dropped: false, pos: null });
@@ -156,9 +167,12 @@
     P.health = 100; P.bleed = 0; P.bloodMask = 0; P.maskWater = 0; P.maskSlosh = 0; P.maskClearing = false;
     P.grab = false; P.stuck = 0; P.dry = false; P.lanternOut = false; P.lanternLevel = 0; P.wristRaised = false; P.tug = null;
     P.currentSpeed = 0; P.caught = false; P.quake = 0; P.shock = 0; P.rag = 0; P.maimed = null; P.kickMul = 1; P.warm = false; P.daze = 0; P.measure = null;
+    P.bleedOut = 0; P.maskFlood = 0; run.bledSent = false; run.bleedHinted = false; run.dark = false; run.darkT = 0;
     P.headlamp = lamp.headlamp = hasHeadlamp(r);
     var inv = TU.player.inventory, ld = (r && r.loadout) || {};
-    inv.tape = ld.tape || 0; inv.flexTape = ld.flexTape || 0; inv.lantern = ld.lantern ? { slots: TU.progress.value('lantern', 'slots') || 2, creatures: [] } : null;
+    // The lantern comes only if it was bought (upgrade level 1+); its slots grow with the upgrade level.
+    var lanLv = TU.progress.level('lantern');
+    inv.tape = ld.tape || 0; inv.flexTape = ld.flexTape || 0; inv.lantern = ld.lantern && lanLv > 0 ? { slots: TU.progress.value('lantern', 'slots') || 2, creatures: [] } : null;
     inv.measuringTape = !!ld.measuringTape; inv.camera = !!ld.camera; inv.glowSticks = ld.glowSticks || 0; inv.items = [];
     run.t = 0; run.lowLightWarned = false; run.narcWarned = false; run.exitWarned = false; run.siltWas = false; run.kickTimer = 0; run.pullTimer = 0; run.sprintLock = false; run.drownSent = false;
     run.darkHinted = false; run.lanternHinted = false; run.caughtHinted = false; run.cutHinted = false; run.maskHinted = false; run.droppedHinted = false; run.tilt = 0;
@@ -178,7 +192,8 @@
     P.yaw = P.tYaw = sp.yaw; P.pitch = P.tPitch = sp.pitch - 0.05;
     rope.anchor = TU.cave.features.entrance ? TU.cave.features.entrance.stake.clone() : P.pos.clone();
     rope.pts = [rope.anchor.clone()]; rope.mesh.count = 0;
-    waypoints.forEach(function (w) { TU.scene.remove(w.group); }); waypoints.length = 0; wpLights.forEach(function (l) { l.intensity = 0; });
+    waypoints.forEach(function (w) { TU.scene.remove(w.group); w.group.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && o === w.label) o.material.map.dispose(); o.material.dispose(); } }); });
+    waypoints.length = 0; wpLights.forEach(function (l) { l.intensity = 0; });
     lampDir.set(0, 0, -1).applyEuler(new T.Euler(P.pitch, P.yaw, 0, 'YXZ'));
     P.env = TU.cave.nearestPoint(P.pos, hint);
     computeBasis();
@@ -189,9 +204,9 @@
     var n = 0; for (var i = 0; i < P.tanks.length; i++) if (!P.tanks[i].dropped) n++;
     P.carried = n;
     var lo = loadoutFor(Math.max(1, n));
-    run.swimMul = lo.swimMul * (run.swimUpgrade || 1);
+    run.swimMul = lo.swimMul * (run.swimUpgrade || 1) * (run.finSpeed || 1);
     run.staminaMul = lo.staminaMul;
-    run.weightStaminaMax = run.baseStaminaMax * lo.staminaMul;
+    run.weightStaminaMax = run.baseStaminaMax * lo.staminaMul * (run.finStamina || 1);
     P.staminaMax = run.weightStaminaMax;
   }
 
@@ -211,9 +226,12 @@
   function releaseLock() { if (document.pointerLockElement) { ignoreUnlock = true; try { document.exitPointerLock(); } catch (e) { } } }
   var GAME_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, Space: 1, KeyC: 1, ControlLeft: 1, ControlRight: 1, ShiftLeft: 1, ShiftRight: 1, KeyB: 1, KeyV: 1, KeyR: 1, KeyF: 1, KeyQ: 1, KeyH: 1, KeyE: 1, KeyT: 1, KeyG: 1, KeyL: 1, KeyM: 1, KeyZ: 1, KeyX: 1, Digit1: 1, Digit2: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
 
-  // Every key the diver uses, for the controls screen (agent D reads TU.player.bindings).
+  // Every key in the game, for the controls screen (agent D's ui.js reads TU.player.bindings).
+  // One key never does two different things in the same state: E tap is "use", E hold is "grab";
+  // digits 1 and 2 are tape in a dive and only pick camp stations in the camp.
   var BINDINGS = [
     'Swimming',
+    { action: 'look', keys: ['Mouse'], label: 'Look around (click the view to lock the mouse)', type: 'hold' },
     { action: 'swim', keys: ['KeyW', 'KeyA', 'KeyS', 'KeyD'], label: 'Kick and glide (walk on dry land)', type: 'hold' },
     { action: 'up', keys: ['Space'], label: 'Swim up (jump on dry land)', type: 'hold' },
     { action: 'down', keys: ['KeyC', 'ControlLeft'], label: 'Swim down (crouch on dry land)', type: 'hold' },
@@ -226,7 +244,7 @@
     { action: 'grab', keys: ['KeyE'], label: 'Hold near rock: grab and anchor (currents cannot push you)', type: 'hold' },
     { action: 'tug', keys: ['KeyA', 'KeyD'], label: 'Strong current: hold E and tap A D A D to pull free', type: 'alternate' },
     'Body and gear',
-    { action: 'interact', keys: ['KeyE'], label: 'Tap: catch a glowing creature, pick up a tank', type: 'press' },
+    { action: 'interact', keys: ['KeyE'], label: 'Tap: pick up a tank, fossil or treasure, or catch a glowing creature', type: 'press' },
     { action: 'measure', keys: ['KeyT'], label: 'Hold: measure a creature with the tape', type: 'hold' },
     { action: 'flashlight', keys: ['KeyF'], label: 'Flashlight on / off', type: 'press' },
     { action: 'lantern', keys: ['KeyL'], label: 'Hold the creature lantern out', type: 'press' },
@@ -234,8 +252,18 @@
     { action: 'ductTape', keys: ['Digit1', 'KeyX'], label: 'Duct tape a cut', type: 'press' },
     { action: 'flexTape', keys: ['Digit2'], label: 'Flex Tape a cut (stronger, never peels)', type: 'press' },
     { action: 'tank', keys: ['KeyG'], label: 'Drop your spare tank (lighter, more stamina), or pick a dropped one back up', type: 'press' },
-    { action: 'waypoint', keys: ['KeyQ'], label: 'Drop a waypoint', type: 'press' },
-    { action: 'hud', keys: ['KeyH'], label: 'Hide or show the HUD', type: 'press' }
+    { action: 'waypoint', keys: ['KeyQ'], label: 'Drop a waypoint (then type its name, Enter saves)', type: 'press' },
+    'Screens',
+    { action: 'wrist', keys: ['Tab'], label: 'Hold or tap: wrist computer and hologram map', type: 'hold', owner: 'ui' },
+    { action: 'wristPick', keys: ['BracketLeft', 'BracketRight'], label: 'Wrist up: pick a waypoint', type: 'press', owner: 'ui' },
+    { action: 'wristRename', keys: ['KeyN'], label: 'Wrist up: rename the picked waypoint', type: 'press', owner: 'ui' },
+    { action: 'wristSpin', keys: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], label: 'Wrist up: spin the hologram (or drag, wheel zooms)', type: 'hold', owner: 'ui' },
+    { action: 'slate', keys: ['KeyJ'], label: 'Waterproof slate (logbook)', type: 'press', owner: 'ui' },
+    { action: 'hud', keys: ['KeyH'], label: 'Hide or show the HUD', type: 'press' },
+    { action: 'pause', keys: ['Escape'], label: 'Pause and settings', type: 'press' },
+    'Camp',
+    { action: 'station', keys: ['Digit1', 'Digit8'], label: '1 to 8: jump to a camp station (only in the camp)', type: 'press', owner: 'ui' },
+    { action: 'confirm', keys: ['Enter'], label: 'Menus: the main action (dive, resume, dive again)', type: 'press', owner: 'ui' }
   ];
 
   function bindInput() {
@@ -298,21 +326,32 @@
     }
   }
 
-  // E tap: catch a glowing creature in your light, or pick up a dropped tank. Holding E on rock grabs it.
+  // E tap: pick up a dropped tank, a fossil or treasure, or catch a glowing creature in your light.
+  // Holding E on rock grabs it (only if the tap did nothing, so the two never fight).
   var eUsed = false;
+  var CATCH_WHY = { not_glowing: 'It does not glow. Measure it instead (hold T).', fleeing: 'Too fast. It got away.', full: 'The lantern is full.', no_lantern: 'You need a lantern to catch it. Buy one at camp.', too_far: 'Too far. Get closer.', bit: 'That was not a light. That was a mouth.', gone: '' };
   function interact() {
     eUsed = false;
-    var near = typeof TU.creatures.nearestInView === 'function' ? TU.creatures.nearestInView(2.4, 0.85) : null;
-    if (near && near.id != null) {
-      var res = TU.creatures.catch(near.id) || {};
+    var CR = TU.creatures;
+    if (pickUpTank(true) != null) { eUsed = true; return; }
+    var lit = typeof CR.nearestInView === 'function' ? CR.nearestInView(2.4, 0.85, { catchable: true }) : null;
+    if (lit && lit.id != null) {
+      var res = CR.catch(lit.id) || {};
       eUsed = true;
-      if (!res.ok) {
-        var why = { not_glowing: 'It does not glow. Measure it instead (hold T).', fleeing: 'Too fast. It got away.', full: 'The lantern is full.', no_lantern: 'You need a lantern to catch it.', gone: '' }[res.reason];
-        if (why) msg(why, 2);
-      } else { P.anim.jolt = 1; if (!P.lanternOut && TU.player.inventory.lantern) toggleLantern(true); }
+      if (!res.ok) { var why = CATCH_WHY[res.reason]; if (why) msg(why, 2); TU.emit('player:catchFail', { reason: res.reason || null, speciesId: res.speciesId || null }); }
+      else { P.anim.jolt = 1; if (!P.lanternOut && TU.player.inventory.lantern) toggleLantern(true); }
       return;
     }
-    if (pickUpTank(true) != null) eUsed = true;
+    var f = typeof CR.findNearest === 'function' ? CR.findNearest(2.5, 0.75) : null;
+    if (f && f.id != null && typeof CR.pickup === 'function') {
+      var pr = CR.pickup(f.id) || {};
+      eUsed = true;
+      if (pr.ok) { P.anim.jolt = 1; TU.player.inventory.items.push({ id: pr.id, kind: pr.kind, name: pr.name, value: pr.value }); }
+      else if (pr.reason === 'too_far') msg('Too far. Get closer.', 1.6);
+      return;
+    }
+    var other = typeof CR.nearestInView === 'function' ? CR.nearestInView(2.4, 0.9) : null;
+    if (other && other.id != null) { eUsed = true; msg(CATCH_WHY.not_glowing, 2); }
   }
 
   // Rough touch controls (a bonus; the game is built for keyboard and mouse).
@@ -413,10 +452,21 @@
     grp.position.copy(P.pos).addScaledVector(fwd, cfg.waypoints.dropAhead);
     TU.scene.add(grp);
     var light = wpLights[(P.wpCount - 1) % wpLights.length]; light.position.copy(grp.position); light.intensity = 0.9;
-    var wp = { index: P.wpCount, name: name, pos: grp.position.clone(), group: grp, halo: halo, ph: Math.random() * 6, light: light, depth: Math.max(0, -grp.position.y) };
+    var wp = { index: P.wpCount, name: name, pos: grp.position.clone(), group: grp, halo: halo, label: lbl, ph: Math.random() * 6, light: light, depth: Math.max(0, -grp.position.y) };
     waypoints.push(wp);
     TU.emit('waypoint:placed', { index: wp.index, name: name, pos: wp.pos.clone(), depth: wp.depth });
     return wp;
+  }
+  // Give a waypoint a new name: rebuilds its glowing label in the cave (the HUD, slate and hologram read wp.name).
+  function renameWaypoint(index, name) {
+    for (var i = 0; i < waypoints.length; i++) {
+      var w = waypoints[i]; if (w.index !== index) continue;
+      name = String(name == null ? '' : name).slice(0, 24) || w.name;
+      w.name = name;
+      if (w.label) { var old = w.label.material.map; w.label.material.map = TU.tex.label(name); w.label.material.needsUpdate = true; if (old) old.dispose(); }
+      return true;
+    }
+    return false;
   }
   function ropeLength() {
     var L = 0, p = rope.pts;
@@ -554,6 +604,14 @@
     }
     P.bleed = bleed;
     P.kickMul = kick; run.injRegen = regen; run.sprained = sprainOn;
+    // Bleeding out: health stops at minHealth, but if the bleeding stays untreated there for
+    // injury.bleedOut seconds the run ends. Tape stops it (1 / X duct tape, 2 Flex Tape).
+    var tut = TU.run && TU.run.tutorial;
+    if (bleed > 0 && P.health <= C.injury.minHealth + 0.01 && !tut) {
+      P.bleedOut += dt;
+      if (!run.bleedHinted) { run.bleedHinted = true; TU.emit('ui:hint', { text: 'You are bleeding out. Tape the cut NOW: 1 or X duct tape, 2 Flex Tape.', dur: 6 }); }
+      if (P.bleedOut >= C.injury.bleedOut && !run.bledSent) { run.bledSent = true; TU.emit('player:bledOut', { pos: P.pos.clone(), depth: P.depth }); }
+    } else P.bleedOut = Math.max(0, P.bleedOut - dt * 2);
     if (bleed > 0) {
       P.health = Math.max(C.injury.minHealth, P.health - bleed * C.injury.bleedHealth * dt);
       P.panic = clamp(P.panic + bleed * C.injury.bleedPanic * dt, 0, 100);
@@ -741,7 +799,10 @@
     var bottom = TU.cave.features.bottom;
     var nearGlow = bottom ? P.pos.distanceTo(bottom.pos) < 14 : false;
     var lit = (P.flashOn && shock.lightOff <= 0) || P.lanternLevel > 0.3;
-    var dark = !lit && env.daylight < 0.02 && TU.creatures.nearCount(P.pos, 8) === 0 && !breathingAir && !nearGlow;
+    run.darkT -= dt;
+    if (run.darkT <= 0) { run.darkT = 0.25; run.glowNear = TU.creatures.nearCount(P.pos, cfg.panic.darkRadius || 8, { glowing: true }) > 0; }
+    var dark = !lit && env.daylight < 0.02 && !run.glowNear && !breathingAir && !nearGlow;
+    run.dark = dark;
     var dp = PN.calm;
     if (sprint) dp += PN.sprint;
     if (dark) dp += PN.dark;
@@ -847,7 +908,7 @@
         run.kickTimer -= dt;
         if (run.kickTimer <= 0) { P.kickPhase = 0; run.kickTimer = interval; P.anim.kickCount++; TU.emit('player:kick', { strength: sprint ? 1.3 : 0.8, sprint: sprint }); }
       } else run.kickTimer = 0;
-      var squeezeF = squeeze ? SW.squeezeThrust * (1 - 0.8 * squeezeS.stuck) : 1;
+      var squeezeF = squeeze ? SW.squeezeThrust * (1 - 0.8 * squeezeS.stuck) * (run.finSqueeze || 1) : 1;
       if (squeeze && fb > 0) { squeezeS.stuck = clamp(squeezeS.stuck + C.squeeze.stuckRate * dt * (0.6 + rand() * 0.8), 0, 1); }
       if (P.kickPhase >= 0) {
         P.kickPhase += dt / SW.kickTime;
@@ -1070,14 +1131,14 @@
     if (caught && P.inWater && !grab.on) {
       // facing into the flow forces water past the seal
       var into = -(P.fwd.x * curV.x + P.fwd.y * curV.y + P.fwd.z * curV.z) / Math.max(curSpeed, 0.01);
-      if (into > 0.3) P.maskWater = clamp(P.maskWater + C.current.floodRate * into * dt * (curSpeed / C.current.caught), 0, 1);
+      if (into > 0.3) P.maskWater = clamp(P.maskWater + C.current.floodRate * into * dt * (curSpeed / C.current.caught) * run.mask.flood, 0, 1);
     }
     if (P.maskClearing && P.inWater) P.maskWater = Math.max(0, P.maskWater - C.mask.clearRate * dt);
     if (!P.inWater || P.surfaced) P.maskWater = Math.max(0, P.maskWater - C.mask.drain * dt * (P.surfaced ? 0.5 : 1));
     var flooded = P.maskWater > 0.1;
     if (flooded && !mask.wasFlooded) { TU.emit('player:maskFlood', { level: P.maskWater }); if (!run.maskHinted) { run.maskHinted = true; TU.emit('ui:hint', { text: 'Mask flooded! Hold M to tilt your head and blow it clear.', dur: 4.5 }); } }
     if (!flooded && mask.wasFlooded) TU.emit('player:maskClear', {});
-    mask.wasFlooded = flooded; P.maskFlooded = flooded;
+    mask.wasFlooded = flooded; P.maskFlooded = flooded; P.maskFlood = P.maskWater; // maskFlood: the same 0..1 level, for the HUD
     // slosh: the waterline lags behind your head turning (a damped spring)
     var dYaw = (P.yaw - mask.lastYaw) / Math.max(dt, 1e-4), dRoll = (P.roll - mask.lastRoll) / Math.max(dt, 1e-4);
     mask.lastYaw = P.yaw; mask.lastRoll = P.roll;
@@ -1086,7 +1147,7 @@
     mask.slosh = clamp(mask.slosh + mask.sloshV * dt, -0.9, 0.9);
     P.maskSlosh = mask.slosh;
   }
-  function floodMask(amount) { P.maskWater = clamp(P.maskWater + amount, 0, 1); }
+  function floodMask(amount) { P.maskWater = clamp(P.maskWater + amount * run.mask.flood, 0, 1); }
 
   // Take (or with a negative amount, refill) air from the tanks you carry. Auto-switches to the next tank.
   function breatheFromTanks(amount) {
@@ -1152,18 +1213,18 @@
   /* ------------------------------------------------------------------ */
   /* Camera and flashlight placement                                     */
   /* ------------------------------------------------------------------ */
-  var camUp = new T.Vector3();
+  var camUp = new T.Vector3(), ROCK_TINT = new T.Color(0x9a8f80);
   function placeCamera(dt) {
     var camera = TU.camera, t = run.t + idleT, narc = P.narcosis || 0;
     ragdollStep(dt);
-    var motion = REDUCED ? 0.25 : 1;
+    var motion = reduced() ? 0.25 : 1;
     var bob = P.kickPhase >= 0 && !P.dry ? Math.sin(Math.PI * P.kickPhase) * 0.006 * motion : 0;
     if (P.dry && land.grounded && !rag.active) bob = Math.sin(P.anim.walkPhase * Math.PI * 4) * 0.012 * motion * clamp(P.speed / 2, 0, 1);
     var lrKey = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-    var lr = (P.mode === 'squeeze' ? 0 : lrKey) * (REDUCED ? 0.01 : 0.035);
+    var lr = (P.mode === 'squeeze' ? 0 : lrKey) * (reduced() ? 0.01 : 0.035);
     var wig = P.mode === 'squeeze' ? squeezeS.wiggle * 0.06 * motion : 0;
     P.roll += (-lr - P.roll) * (1 - Math.exp(-dt * 4));
-    var shk = (smooth(45, 100, P.panic) * 0.012 + P.shake * 0.02 + P.cold * 0.003 + (P.quake || 0) * 0.012) * (REDUCED ? 0.2 : 1);
+    var shk = (smooth(45, 100, P.panic) * 0.012 + P.shake * 0.02 + P.cold * 0.003 + (P.quake || 0) * 0.012) * (reduced() ? 0.2 : 1);
     var sx = N.n3(t * 9, 0, 0) * shk, sy = N.n3(0, t * 9, 3) * shk;
     // blowing out the mask: tilt your head back
     run.tilt = U.damp(run.tilt || 0, P.maskClearing ? 0.38 : 0, 5, dt || 1);
@@ -1171,7 +1232,7 @@
     camera.quaternion.setFromEuler(camEuler);
     camera.position.copy(P.pos);
     if (P.dry && rag.active) camera.position.y += 0; // the eye height already slumps in stepDry
-    var fovT = cfg.swim.fov + (REDUCED ? 0 : Math.sin(t * 0.7) * 1.5 * narc) + (P.sprint ? 2 : 0);
+    var fovT = cfg.swim.fov + (run.mask.fov || 0) + (reduced() ? 0 : Math.sin(t * 0.7) * 1.5 * narc) + (P.sprint ? 2 : 0);
     if (dt === 0) { camera.fov = fovT; camera.updateProjectionMatrix(); }
     else if (Math.abs(camera.fov - fovT) > 0.02) { camera.fov += (fovT - camera.fov) * (1 - Math.exp(-dt * 3)); camera.updateProjectionMatrix(); }
     // ---- flashlight: held in the left hand (or a mask headlamp), with lag and sway ----
@@ -1209,7 +1270,7 @@
       hitD = TU.cave.raycast(lampPos, lampDir, 14, hint);
       bounce.position.copy(lampPos).addScaledVector(lampDir, Math.max(0.3, hitD * 0.82));
       bounce.intensity = cfg.light.bounce * I * clamp(1 - hitD / 15, 0, 1);
-      bounce.color.copy(spot.color).lerp(new T.Color(0x9a8f80), 0.4);
+      bounce.color.copy(spot.color).lerp(ROCK_TINT, 0.4);
     } else bounce.intensity = 0;
     lamp.pos.copy(lampPos); lamp.dir.copy(lampDir); lamp.on = I; lamp.hitDist = hitD;
     lamp.cosOuter = Math.cos(spot.angle + 0.02); lamp.cosInner = Math.cos(spot.angle * (1 - spot.penumbra * 0.8));
@@ -1233,8 +1294,17 @@
     computeBasis(); P.env = TU.cave.nearestPoint(P.pos, hint); placeCamera(dt);
   }
 
+  // Graphics quality (fx.js picks the preset): flashlight shadows on or off and the shadow map size.
+  function applyGfx() {
+    var g = TU.fx.gfx; if (!g || !spot) return;
+    var want = !!g.shadows;
+    if (spot.castShadow !== want) spot.castShadow = want;
+    var ms = g.shadowMap || 1024;
+    if (spot.shadow.mapSize.x !== ms) { spot.shadow.mapSize.set(ms, ms); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
+  }
   // Once per rendered frame: rope segments, waypoint pulses, dropped tank tags.
   function frame() {
+    applyGfx();
     var pts = rope.pts, n = 0, t = run.t + idleT, mesh = rope.mesh;
     function seg(a, b) { var len = a.distanceTo(b); if (len < 1e-3 || n >= cfg.rope.maxPoints) return; tmpV.subVectors(b, a).divideScalar(len); qq.setFromUnitVectors(yAxis, tmpV); sc3.set(1, len, 1); tmpV.addVectors(a, b).multiplyScalar(0.5); m4.compose(tmpV, qq, sc3); mesh.setMatrixAt(n++, m4); }
     for (var i = 1; i < pts.length; i++) seg(pts[i - 1], pts[i]);
@@ -1254,6 +1324,23 @@
     P.shake = Math.max(P.shake, 1 + s); P.panic = clamp(P.panic + C.panic.quake * s, 0, 100);
     if (TU.state.simulating() && s > 1.2 && rand() < 0.3) addInjury('cut', 0.2 + rand() * 0.25, 'debris');
   });
+  // A falling rock from a quake hit the diver (cave-dress.js emits cave:rockHit). Severity = radius (m) x speed (m/s).
+  TU.on('cave:rockHit', function (e) {
+    if (!TU.state.simulating()) return;
+    var sev = (e.r || 0.2) * (e.speed || 1), R = C.rocks;
+    P.shake = Math.max(P.shake, 0.8 + Math.min(1.5, sev)); P.hitFlash = Math.max(P.hitFlash, 0.6);
+    TU.emit('player:hit', { strength: clamp(sev, 0.2, 1), impact: e.speed || 1, normal: new T.Vector3(0, 1, 0), pos: P.pos.clone(), dry: P.dry, rock: true });
+    if (sev >= R.crushSeverity && !(TU.run && TU.run.tutorial)) { P.health = 0; TU.emit('player:crushed', { pos: P.pos.clone(), depth: P.depth, severity: sev }); return; }
+    if (sev >= R.crushBreak) { addInjury('break', clamp(sev / R.crushSeverity, 0.3, 1), 'rock'); addInjury('cut', 0.4, 'rock'); msg('A ROCK HIT YOU. Something broke.', 3); }
+    else if (sev >= R.crushCut) { addInjury('cut', clamp(sev, 0.15, 0.6), 'rock'); }
+  });
+  // Marv pulls you out (the practice hole has no fail states): air, health and breath back.
+  function rescue() {
+    P.health = Math.max(P.health, 60); P.bleedOut = 0; P.drown = 0; run.drownSent = false; run.bledSent = false;
+    P.injuries.forEach(function (j) { if (j.type === 'cut' && !j.taped) { j.taped = true; j.tape = 'flex'; } });
+    for (var i = 0; i < P.tanks.length; i++) if (!P.tanks[i].dropped) P.tanks[i].bar = P.tanks[i].max;
+    syncAir();
+  }
   // Creature attacks (agent B). Several names are accepted so either naming works.
   function onShock(e) {
     var s = clamp(e.strength == null ? 1 : e.strength, 0.2, 2);
@@ -1379,6 +1466,8 @@
     pickUpTank: pickUpTank,
     applyTape: applyTape,
     addInjury: addInjury,
+    renameWaypoint: renameWaypoint,
+    rescue: rescue,
     // Co-op hook for later (Unreal): a teammate pulling on the rope adds to your tug of war.
     tugAssist: function (amount) { if (tug.active) tug.value = clamp(tug.value + (amount || 0.05), 0, 1); return tug.active; },
     bindings: BINDINGS,

@@ -24,7 +24,10 @@
 (function () {
   'use strict';
   var TU = window.TU, U = TU.util, clamp = U.clamp, lerp = U.lerp, smooth = U.smooth;
-  var Au = { ctx: null, on: false, muted: !!TU.save.data.settings.muted, loops: {} };
+  var Au = { ctx: null, on: false, muted: !!TU.save.data.settings.muted, loops: {}, volume: 1 };
+  // Saved volume (agent D's settings slider, 0..1).
+  try { var sv = TU.save.data.ui && TU.save.data.ui.settings && TU.save.data.ui.settings.volume; if (typeof sv === 'number') Au.volume = clamp(sv, 0, 1); } catch (e) { /* defaults */ }
+  function masterGain() { return Au.muted ? 0 : 0.9 * Au.volume; }
   var timers = { beep: 0, heart: 0, drip: 0, creak: 6 };
   var quakeA = { t: 0 };
 
@@ -32,7 +35,7 @@
     if (Au.ctx) { if (Au.ctx.state === 'suspended') Au.ctx.resume(); return; }
     var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     var ctx = new AC(); Au.ctx = ctx;
-    var master = ctx.createGain(); master.gain.value = Au.muted ? 0 : 0.9;
+    var master = ctx.createGain(); master.gain.value = masterGain();
     var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 4;
     master.connect(comp); comp.connect(ctx.destination); Au.master = master;
     // narcosis low pass on everything
@@ -318,8 +321,13 @@
   function play(name, params) { if (!Au.on || !SND[name]) return; try { SND[name](params || {}); } catch (e) { console.error('[TU audio] ' + name, e); } }
   function setMuted(m) {
     Au.muted = !!m; TU.audio.muted = Au.muted;
-    if (Au.master) Au.master.gain.value = Au.muted ? 0 : 0.9;
+    if (Au.master) Au.master.gain.value = masterGain();
     TU.save.set('settings.muted', Au.muted);
+  }
+  // Master volume 0..1 (the mute switch stays separate).
+  function setVolume(v) {
+    Au.volume = clamp(+v || 0, 0, 1); TU.audio.volume = Au.volume;
+    if (Au.master) Au.master.gain.value = masterGain();
   }
 
   /* ------------------------------------------------------------------ */
@@ -367,6 +375,8 @@
     muted: Au.muted,
     unlock: init,
     setMuted: setMuted,
+    setVolume: setVolume,
+    volume: Au.volume,
     play: play,
     suspend: function () { if (Au.ctx && Au.ctx.state === 'running') Au.ctx.suspend(); },
     resume: function () { if (Au.ctx && Au.ctx.state === 'suspended') Au.ctx.resume(); },
@@ -390,6 +400,13 @@
   TU.on('player:maskFlood', function () { play('flood'); });
   TU.on('player:shocked', function (e) { play('shock', e); });
   TU.on('player:bitten', function (e) { play('bite', e); });
+  TU.on('player:stung', function (e) { play('cut', { severity: Math.min(0.35, (e.severity || 0.1) + 0.1) }); });
+  TU.on('player:crushed', function () { play('fall', { strength: 1.5 }); play('quake', { strength: 0.6, duration: 1 }); });
+  // Creature warnings (agent B): claws clicking before a pinch, an electric crackle before a shock.
+  TU.on('creature:warn', function (e) {
+    if (e.kind === 'pinch') { play('metalClank', { vol: 0.02 }); play('metalClank', { vol: 0.015 }); }
+    else if (e.kind === 'shock') play('shock', { strength: 0.18 });
+  });
   TU.on('player:grab', function (e) { if (e.on) play('grab'); });
   TU.on('player:currentEscape', function (e) { play(e.ok ? 'whoosh' : 'thump', { strength: 0.6 }); });
   TU.on('player:tankDrop', function () { play('metalClank', { vol: 0.06 }); });

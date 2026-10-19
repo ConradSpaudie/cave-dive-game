@@ -213,8 +213,11 @@
     var mul = (DIFF[log.difficulty] ? DIFF[log.difficulty].mul : 1) * SOLO_MUL;
     var dead = !s.won && s.reason !== 'quit';
     var z = U.zoneOfDepth(s.maxDepthM || 0);
-    add('Depth bonus: ' + U.ZONE_NAMES[z], DEPTH_BONUS[z] * mul);
+    // A KEEP DIVING leg only pays depth for zones deeper than where the leg started (the first leg paid the rest).
+    if (!log.continued) add('Depth bonus: ' + U.ZONE_NAMES[z], DEPTH_BONUS[z] * mul);
+    else if (z > (log.startZone || 0)) add('Deeper than the bottom: ' + U.ZONE_NAMES[z], (DEPTH_BONUS[z] - DEPTH_BONUS[log.startZone || 0]) * mul);
     if (s.won && (s.reason === 'bottom' || s.reason === 'debug')) add('Reached the bottom', 1000 * mul);
+    if (s.won && s.reason === 'endless') add('Came back from past the bottom', 300 * mul);
     // Logbook bounties for species new this dive (records pay a little too).
     var bounty = 0, recs = 0;
     log.newSpecies.forEach(function (id) { var sp = K.species(id); bounty += K.BOUNTY[(sp && sp.rarity) || 'common'] || 25; });

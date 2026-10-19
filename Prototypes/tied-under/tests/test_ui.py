@@ -34,7 +34,7 @@ def ui_static_checks():
         if not (name == "ui.js" or name.startswith("ui-")):
             continue
         text = open(os.path.join(ROOT, "js", name), encoding="utf-8").read()
-        assert "—" not in text, "em dash in " + name
+        assert "\u2014" not in text, "em dash in " + name
         for pat, why in ((r"\balert\s*\(", "alert"), (r"\bconfirm\s*\(", "confirm"), (r"(?<![\w.])prompt\s*\(", "prompt"),
                          (r"\bfetch\s*\(", "fetch"), (r"\bWebSocket\b", "WebSocket"), (r"localStorage", "direct localStorage")):
             assert not re.search(pat, text), "%s in %s" % (why, name)
@@ -315,13 +315,13 @@ def main():
         click(page, "#ui-st-boards")
         snap(page, "26_boards")
 
-        # ---- Keep diving starts a deeper continuation
+        # ---- Keep diving carries on in the same cave (endless mode, TU.game.keepDiving)
         click(page, "#ui-st-dive")
         click(page, "#ui-btn-dive")
         seed1 = page.evaluate("__debug.TU.run.seed")
         page.evaluate("__debug.TU.game.endRun({ won: true, reason: 'bottom' })")
         click(page, "#ui-btn-keep")
-        assert state(page) == "dive" and page.evaluate("__debug.TU.run.seed") != seed1
+        assert state(page) == "dive" and page.evaluate("__debug.TU.run.seed") == seed1 and page.evaluate("__debug.TU.run.endless")
 
         # ---- Death screens
         page.evaluate("__debug.TU.game.endRun({ won: false, reason: 'bled' })")

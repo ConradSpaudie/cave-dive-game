@@ -16,6 +16,9 @@
  *   - A faint volumetric beam cone for the flashlight.
  *   - Screen overlays (CSS): mask rim, scanlines, silt brown, drowning black, wall hit flash.
  *   - Measures how much silt is around the camera: TU.fx.siltDensity() (0..1). player.js reads it.
+ *   - Graphics quality: Low / Medium / High presets (cfg.gfx) and an automatic scaler that lowers the
+ *     render resolution when frames take too long and raises it again when there is room.
+ *     TU.fx.gfx is the active preset (player.js reads it for shadows, cave.js for the draw distance).
  *
  * Owner: agent C (with player.js and audio.js).
  */
@@ -55,8 +58,15 @@
     canvas = TU.el('canvas', { id: 'fx-canvas', tabIndex: 0, attrs: { 'aria-label': 'Cave diving view' } });
     document.body.insertBefore(canvas, document.body.firstChild);
     ['silt', 'narc', 'panic', 'hit', 'mask', 'scan', 'black'].forEach(function (k) { overlay[k] = TU.el('div', { id: 'fx-' + k, className: 'fx-layer' }); });
-    renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cfg.fx.pixelRatioMax));
+    // No antialias on the screen buffer: the picture is drawn into the lens pass target (which has its
+    // own multisampling on High) and only copied to the screen, so screen MSAA would be wasted memory.
+    try { renderer = new T.WebGLRenderer({ canvas: canvas, antialias: false, powerPreference: 'high-performance' }); }
+    catch (e) { var we = new Error('WebGL could not start: ' + ((e && e.message) || e)); we.tuWebGL = true; throw we; }
+    if (!renderer.getContext()) { var ne = new Error('WebGL could not start'); ne.tuWebGL = true; throw ne; }
+    // Software renderers (headless tests, machines without a GPU) get no MSAA and the light rock shader.
+    software = /swiftshader|llvmpipe|software|softpipe/i.test(gpuName());
+    if (software) applyPreset(gfx.name);
+    renderer.setPixelRatio(pixelRatioFor(gfx));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputEncoding = T.sRGBEncoding;
     renderer.toneMapping = T.ACESFilmicToneMapping;
@@ -89,14 +99,70 @@
     TU.renderer = renderer; TU.scene = scene; TU.camera = camera; TU.canvas = canvas;
     initPost();
 
-    window.addEventListener('resize', function () {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-      handCamera.aspect = camera.aspect; handCamera.updateProjectionMatrix();
-      if (post) { var s = drawSize(); post.rt.setSize(s.x, s.y); }
-    });
+    window.addEventListener('resize', resize);
   }
-  function drawSize() { var v = new T.Vector2(); renderer.getDrawingBufferSize(v); return v; }
+  function resize() {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+    handCamera.aspect = camera.aspect; handCamera.updateProjectionMatrix();
+    if (post) { var s = drawSize(); post.rt.setSize(s.x, s.y); }
+  }
+  var _ds = null;
+  function drawSize() { if (!_ds) _ds = new T.Vector2(); renderer.getDrawingBufferSize(_ds); return _ds; }
+
+  /* ------------------------------------------------------------------ */
+  /* Graphics quality: presets and the automatic scaler                  */
+  /* ------------------------------------------------------------------ */
+  var gfx = { name: 'high', autoScale: 1, auto: true };
+  function preset(name) { var G = cfg.gfx; return G[name] && G[name].pixelRatio ? name : 'high'; }
+  function applyPreset(name) {
+    var P = cfg.gfx[preset(name)], k;
+    for (k in P) gfx[k] = P[k];
+    gfx.name = preset(name);
+    if (software) { gfx.msaa = 0; gfx.lowRock = true; } // tests and machines without a GPU
+  }
+  function pixelRatioFor(g) { return Math.max(0.35, Math.min(window.devicePixelRatio || 1, g.pixelRatio || 1) * (g.autoScale || 1)); }
+  var software = false;
+  // Switch quality: 'low' | 'medium' | 'high'. Rebuilds what depends on it (resolution, MSAA, rock shader).
+  function setQuality(name, keepScale) {
+    applyPreset(name);
+    if (!keepScale) gfx.autoScale = 1;
+    auto.cool = 3; auto.sum = 0; auto.n = 0; auto.ceiling = 2;
+    if (!renderer) return gfx.name;
+    renderer.setPixelRatio(pixelRatioFor(gfx));
+    resize();
+    if (post && (post.msaa || 0) !== (gfx.msaa || 0)) rebuildTarget();
+    if (TU.caveMat && TU.caveMat.setLow) TU.caveMat.setLow(!!gfx.lowRock);
+    applyParticles();
+    return gfx.name;
+  }
+  // The auto scaler: average real frame time over a window; too slow lowers the render scale,
+  // lots of room raises it again (never above the last scale that was too slow, for a while).
+  var auto = { last: 0, sum: 0, n: 0, t: 0, cool: 3, ceiling: 2, ceilT: 0 };
+  function autoScale(dt) {
+    var now = performance.now(), ms = auto.last ? now - auto.last : 16; auto.last = now;
+    if (!gfx.auto || !TU.state.simulating()) { auto.sum = auto.n = 0; auto.t = 0; return; }
+    if (auto.cool > 0) { auto.cool -= dt; return; }       // let shaders compile after a state or quality change
+    if (ms > 1000) return;                               // a hitch (tab switch), not a slow frame
+    auto.sum += Math.min(ms, 100); auto.n++; auto.t += dt;
+    if (auto.ceilT > 0) { auto.ceilT -= dt; if (auto.ceilT <= 0) auto.ceiling = 2; }
+    if (auto.t < cfg.gfx.autoEvery) return;
+    var avg = auto.sum / auto.n, G = cfg.gfx, s = gfx.autoScale;
+    if (avg > G.autoSlowMs && s > G.scaleMin + 1e-3) {
+      // too slow: step down (two steps when very slow) and remember this scale as too high for 30 s
+      auto.ceiling = s; auto.ceilT = 30;
+      s = Math.max(G.scaleMin, s - G.autoStep * (avg > G.autoSlowMs * 2 ? 2 : 1));
+    } else if (avg < G.autoTargetMs && s < 1 - 1e-3) {
+      // room to spare: step up, but not back to a scale that was too slow a moment ago
+      var up = Math.min(1, s + G.autoStep);
+      if (up < auto.ceiling - 1e-3) s = up;
+    }
+    auto.sum = auto.n = 0; auto.t = 0;
+    if (Math.abs(s - gfx.autoScale) > 1e-3) { gfx.autoScale = s; renderer.setPixelRatio(pixelRatioFor(gfx)); resize(); auto.cool = 1; }
+  }
+  TU.on('state:change', function () { auto.cool = Math.max(auto.cool, 2); });
+  // Fewer marine snow specks on lower presets (they are pure decoration).
+  function applyParticles() { if (snow) snow.geometry.setDrawRange(0, Math.round(SNOW_N * (gfx.particles || 1))); }
 
   /* ------------------------------------------------------------------ */
   /* The lens pass (post-processing)                                     */
@@ -216,12 +282,24 @@
   function gpuName() {
     try { var gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch (e) { return ''; }
   }
+  // The lens pass target: multisampled (MSAA) on High with WebGL2, plain otherwise.
+  function makeTarget(s) {
+    var opts = { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat, encoding: T.sRGBEncoding, depthBuffer: true, stencilBuffer: false };
+    var ms = (gfx.msaa || 0) > 0 && renderer.capabilities.isWebGL2 && T.WebGLMultisampleRenderTarget && !software;
+    var rt = ms ? new T.WebGLMultisampleRenderTarget(s.x, s.y, opts) : new T.WebGLRenderTarget(s.x, s.y, opts);
+    if (rt.isWebGLMultisampleRenderTarget) rt.samples = gfx.msaa;
+    return rt;
+  }
+  function rebuildTarget() {
+    if (!post) return;
+    var old = post.rt, rt = makeTarget(drawSize());
+    post.rt = rt; post.u.tScene.value = rt.texture; post.msaa = rt.isWebGLMultisampleRenderTarget ? rt.samples : 0;
+    old.dispose();
+  }
   function initPost() {
     try {
       var s = drawSize();
-      var opts = { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat, encoding: T.sRGBEncoding, depthBuffer: true, stencilBuffer: false };
-      var rt = (renderer.capabilities.isWebGL2 && T.WebGLMultisampleRenderTarget && !/swiftshader|llvmpipe/i.test(gpuName())) ? new T.WebGLMultisampleRenderTarget(s.x, s.y, opts) : new T.WebGLRenderTarget(s.x, s.y, opts);
-      if (rt.isWebGLMultisampleRenderTarget) rt.samples = 4;
+      var rt = makeTarget(s);
       var hintsU = [], dirsU = [];
       for (var i = 0; i < HINT_MAX; i++) { hintsU.push(new T.Vector4(0, 0, 0, 0)); dirsU.push(new T.Vector2(0, 1)); }
       var mat = new T.ShaderMaterial({
@@ -236,7 +314,7 @@
       });
       var quad = new T.Mesh(new T.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
       var ps = new T.Scene(); ps.add(quad);
-      post = { rt: rt, scene: ps, cam: new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat: mat, u: mat.uniforms };
+      post = { rt: rt, scene: ps, cam: new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat: mat, u: mat.uniforms, msaa: rt.isWebGLMultisampleRenderTarget ? rt.samples : 0 };
     } catch (e) { console.warn('[TU fx] lens pass unavailable, drawing straight to the screen', e); post = null; }
   }
 
@@ -660,8 +738,9 @@
   function tmpPt(x, y, z) { tmpP.x = x; tmpP.y = y; tmpP.z = z; return tmpP; }
 
   // CSS overlays, the lens pass uniforms, the beam and the hints (once per rendered frame).
-  var lensT = 0;
+  var lensT = 0, DOWN = new T.Vector3(0, -1, 0);
   function overlays(dt) {
+    autoScale(dt || 0.016);
     var P = TU.player.state, narc = P.narcosis || 0;
     lensT += dt || 0.016;
     var panicV = smooth(35, 100, P.panic);
@@ -705,7 +784,7 @@
         var len = clamp((lamp.hitDist || 12) + 0.5, 1.5, 13);
         var ang = Math.acos(clamp(lamp.cosOuter || Math.cos(0.42), -1, 1)) * 0.85;
         beam.position.copy(lamp.pos);
-        beam.quaternion.setFromUnitVectors(new T.Vector3(0, -1, 0), lamp.dir);
+        beam.quaternion.setFromUnitVectors(DOWN, lamp.dir);
         beam.scale.set(Math.tan(ang) * len, len, Math.tan(ang) * len);
         beam.material.uniforms.uI.value = I; beam.material.uniforms.uTime.value = lensT;
         beam.material.uniforms.uColor.value.copy(lamp.color || beam.material.uniforms.uColor.value);
@@ -732,11 +811,23 @@
     lensActive: function () { return !!post; },
     // For tests: how many glass hint shapes are on screen right now.
     hintCount: function () { return post ? post.u.uHintN.value : 0; },
-    hintInfo: function () { return hints.info || null; }
+    hintInfo: function () { return hints.info || null; },
+    // Graphics quality: 'low' | 'medium' | 'high'. setAutoQuality(bool) turns the automatic scaler on or off.
+    gfx: gfx,
+    setQuality: function (name) { var n = setQuality(name); TU.save.set('settings.graphics', n); return n; },
+    quality: function () { return { name: gfx.name, auto: gfx.auto, scale: +gfx.autoScale.toFixed(2), pixelRatio: +renderer.getPixelRatio().toFixed(2), msaa: post ? post.msaa : 0, shadows: !!gfx.shadows, software: software }; },
+    setAutoQuality: function (on) { gfx.auto = !!on; if (!on && gfx.autoScale !== 1) { gfx.autoScale = 1; renderer.setPixelRatio(pixelRatioFor(gfx)); resize(); } TU.save.set('settings.autoQuality', !!on); return gfx.auto; }
   });
 
   TU.addSystem('fx', {
-    init: function () { initRenderer(); initParticles(); TU.fx.renderer = renderer; TU.fx.handScene = handScene; TU.fx.handCamera = handCamera; },
+    init: function () {
+      var st = TU.save.data.settings || {};
+      applyPreset(st.graphics || 'high'); gfx.auto = st.autoQuality !== false;
+      initRenderer();
+      if (TU.caveMat && TU.caveMat.setLow) TU.caveMat.setLow(!!gfx.lowRock);
+      initParticles(); applyParticles();
+      TU.fx.renderer = renderer; TU.fx.handScene = handScene; TU.fx.handCamera = handCamera;
+    },
     reset: function () { clearParticles(); overlay.black.style.opacity = 0; hints.key = ''; hints.list = []; },
     update: step,
     idle: step,
