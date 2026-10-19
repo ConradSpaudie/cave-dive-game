@@ -1,3 +1,5 @@
+> **Resolved in the Oct 19 integration.** See CONTRACT.md section 16 for how each item was handled.
+
 # Requests from agent A (cave) to the lead
 
 The generated cave is live (js/cave-sdf.js, js/cave-mat.js, js/cave-dress.js, js/cave.js). Everything below already works with local fallbacks; these are contract and config updates for the lead to make official.

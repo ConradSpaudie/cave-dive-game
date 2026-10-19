@@ -40,6 +40,10 @@
     master.connect(comp); comp.connect(ctx.destination); Au.master = master;
     // narcosis low pass on everything
     var narcLP = ctx.createBiquadFilter(); narcLP.type = 'lowpass'; narcLP.frequency.value = 18000; narcLP.connect(master); Au.narcLP = narcLP;
+    // shared input for other modules' own synthesized sounds (predator tells, weapons, glow sticks):
+    // TU.audio.ctx and TU.audio.out. It goes through narcosis, master volume and mute. Nobody opens a second context.
+    var out = ctx.createGain(); out.gain.value = 1; out.connect(narcLP); Au.out = out;
+    TU.audio.ctx = ctx; TU.audio.out = out;
     // environment bus: muffled plus reverb
     var env = ctx.createBiquadFilter(); env.type = 'lowpass'; env.frequency.value = 900; Au.env = env;
     var dry = ctx.createGain(); dry.gain.value = 0.8; env.connect(dry); dry.connect(narcLP);

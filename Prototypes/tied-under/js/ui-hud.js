@@ -34,7 +34,8 @@
     { id: 'vest', label: 'Vest (buoyancy)', kind: 'bar', slot: 'bl', on: true },
     { id: 'panic', label: 'Panic', kind: 'bar', slot: 'br', on: true },
     { id: 'rope', label: 'Rope used', kind: 'line', slot: 'br', on: true },
-    { id: 'cold', label: 'Cold', kind: 'bar', slot: 'mr', on: false }
+    { id: 'cold', label: 'Cold', kind: 'bar', slot: 'mr', on: false },
+    { id: 'weapon', label: 'Weapon and ammo', kind: 'line', slot: 'br', on: true }
   ];
   var BY_ID = {}; READOUTS.forEach(function (r) { BY_ID[r.id] = r; });
 
@@ -82,6 +83,21 @@
     '.ui-cmp-deg{font-size:11px;color:var(--hud-dim);letter-spacing:.2em;margin-top:1px}',
     /* center bits */
     '#ui-dot{position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:var(--hud);opacity:.5}',
+    /* weapon crosshair: a dot with four short ticks that close in while you aim (right mouse) */
+    '#ui-xh{position:absolute;left:50%;top:50%;width:0;height:0;opacity:0;transition:opacity .2s;--g:9px}',
+    '#ui-xh.ui-on{opacity:1}',
+    '#ui-xh i{position:absolute;background:var(--hud);box-shadow:0 0 6px rgba(79,242,208,.7)}',
+    '#ui-xh .ui-x0{left:-2px;top:-2px;width:4px;height:4px;border-radius:50%}',
+    '#ui-xh .ui-x1,#ui-xh .ui-x2{top:-1px;width:7px;height:2px} #ui-xh .ui-x1{left:calc(-7px - var(--g))} #ui-xh .ui-x2{left:var(--g)}',
+    '#ui-xh .ui-x3,#ui-xh .ui-x4{left:-1px;width:2px;height:7px} #ui-xh .ui-x3{top:calc(-7px - var(--g))} #ui-xh .ui-x4{top:var(--g)}',
+    '#ui-xh.ui-low i{background:var(--warn);box-shadow:0 0 6px rgba(255,180,92,.7)}',
+    '#ui-xh.ui-hitm i{background:#fff;box-shadow:0 0 10px #fff}',
+    '#ui-xh.ui-busy{opacity:.25}',
+    '.ui-wpn{font-size:12px;letter-spacing:.14em}',
+    '.ui-wpn b{font-weight:400;color:var(--hud)}',
+    '.ui-wpn small{display:block;font-size:11px;color:var(--hud-dim);letter-spacing:.12em;margin-top:2px}',
+    '.ui-wpn .ui-bar{width:110px;margin-top:4px}',
+    '.ui-wpn.ui-off{opacity:.55}',
     '#ui-breath{position:absolute;left:50%;bottom:var(--gb);transform:translateX(-50%);font-size:11px;letter-spacing:.2em;color:var(--hud-dim);text-align:center}',
     '#ui-breath .ui-bb{width:120px;height:3px;margin:6px auto 0;background:var(--hud-faint);position:relative;overflow:hidden}',
     '#ui-breath .ui-bb i{position:absolute;left:50%;top:0;bottom:0;width:0;background:var(--hud);transform:translateX(-50%)}',
@@ -183,7 +199,7 @@
     var root = TU.el('div', { id: 'ui-hud', attrs: { 'aria-hidden': 'true' } });
     root.innerHTML = '<div id="ui-glass"></div><div id="ui-cond"></div><div id="ui-fog"></div><div id="ui-bleed"></div><div id="ui-flood"><i></i><b></b></div>' +
       SLOTS.map(function (s) { return '<div class="ui-slot ui-slot-' + s[0] + (/r$/.test(s[0]) ? ' ui-right' : '') + '" id="ui-slot-' + s[0] + '"></div>'; }).join('') +
-      '<div id="ui-dot"></div><div id="ui-warns"></div><div id="ui-toasts"></div>' +
+      '<div id="ui-dot"></div><div id="ui-xh"><i class="ui-x0"></i><i class="ui-x1"></i><i class="ui-x2"></i><i class="ui-x3"></i><i class="ui-x4"></i></div><div id="ui-warns"></div><div id="ui-toasts"></div>' +
       '<div id="ui-breath"><span id="ui-breathlbl">BREATHE</span><div class="ui-bb"><i id="ui-b-breath"></i></div></div>';
     var url = dropletURL(); if (url) $('ui-cond').style.backgroundImage = 'url(' + url + ')';
     TU.el('div', { id: 'ui-wpname', html: '<label for="ui-wp-input" id="ui-wp-lbl">NAME THIS WAYPOINT</label><input id="ui-wp-input" maxlength="24" autocomplete="off" spellcheck="false"><p>Enter saves. Esc keeps the default.</p>' });
@@ -212,7 +228,8 @@
     vest: function () { return barRow('VEST', 'vest', true); },
     panic: function () { return barRow('PANIC', 'pan'); },
     rope: function () { return '<div class="ui-row"><b>ROPE</b><span class="ui-v" id="ui-rope">0 m</span></div>'; },
-    cold: function () { return barRow('COLD', 'cold'); }
+    cold: function () { return barRow('COLD', 'cold'); },
+    weapon: function () { return '<div class="ui-wpn" id="ui-wpn"><b id="ui-wpn-name">WEAPON</b><small id="ui-wpn-ammo"></small><div class="ui-bar" id="ui-bw-wpn" style="visibility:hidden"><i id="ui-b-wpn"></i></div><small id="ui-wpn-lbl"></small></div>'; }
   };
   function buildHud() {
     if (!$('ui-hud')) return;
@@ -245,6 +262,7 @@
     var ph = P.breathPhase || 0, bw, BR = cfg.breath;
     if (ph < BR.inhale) bw = ph / BR.inhale; else if (ph < BR.inhale + BR.exhale) bw = 1 - (ph - BR.inhale) / BR.exhale; else bw = 0;
     var bb = E('ui-b-breath'); if (bb) bb.style.width = (bw * 100).toFixed(0) + '%';
+    crosshair();
     var cmp = E('ui-cmp-t'); if (cmp) cmp.style.transform = 'translateX(' + (-heading(P) * 2).toFixed(1) + 'px)';
     // Fog on the glass from panic and cold (smoothed).
     var fogT = clamp(Math.max((P.panic || 0) / 100 - 0.35, 0) * 1.2 + (P.cold || 0) * 0.7 + (K.data().settings.maskFogs ? 0.2 : 0), 0, 1);
@@ -254,7 +272,9 @@
     var env = P.env || {}, depth = P.depth || 0;
     // depth
     var d = E('ui-depth'); if (d) d.innerHTML = depth.toFixed(1) + '<span>m</span>';
-    setText('ui-zonen', (U.ZONE_NAMES[U.zoneOfDepth(depth)] || '').toUpperCase());
+    // zone name from the cave (knows the Beyond zones of endless segments), else from the depth
+    var zi = TU.cave && typeof TU.cave.zoneAt === 'function' && P.pos ? TU.cave.zoneAt(P.pos) : null;
+    setText('ui-zonen', ((zi && zi.name) || U.ZONE_NAMES[U.zoneOfDepth(depth)] || '').toUpperCase());
     setText('ui-max', 'MAX ' + (P.maxDepth || 0).toFixed(1) + ' m');
     setText('ui-dist', 'DOWN CAVE ' + Math.max(0, env.s || 0).toFixed(0) + ' m');
     var bar = 1.013 + depth * 0.0981;
@@ -278,9 +298,37 @@
     setText('ui-rope', TU.player.ropeLength().toFixed(0) + ' m');
     var cold = P.cold || 0; setBar('cold', cold, cold > 0.7 ? 'bad' : cold > 0.4 ? 'warn' : ''); setText('ui-v-cold', (env.temperature != null ? env.temperature.toFixed(0) + '°C' : Math.round(cold * 100) + '%'));
     var hd = Math.round(heading(P)) % 360; setText('ui-cmp-deg', ('00' + hd).slice(-3) + '°');
+    weaponReadout();
     setText('ui-breathlbl', P.surfaced ? 'AIR' : P.slow ? 'SLOW BREATH' : P.airTotal <= 0 ? 'NO AIR' : (P.breathStage === 1 ? 'INHALE' : P.breathStage === 2 ? 'EXHALE' : 'BREATHE'));
     damage(P);
   }
+  // Weapon: the crosshair (every step, it is cheap) and the ammo readout (10 times a second).
+  var xhKey = '';
+  function crosshair() {
+    var w = null; try { w = TU.weapons && TU.weapons.hudInfo ? TU.weapons.hudInfo() : null; } catch (e) { w = null; }
+    var xh = E('ui-xh'), dot = E('ui-dot'); if (!xh) return;
+    var on = !!(w && w.drawn), k = on ? [w.raised ? 1 : 0, w.low ? 1 : 0, w.hit ? 1 : 0, Math.round(w.aim * 10)].join(',') : 'off';
+    if (k === xhKey) return; xhKey = k;
+    xh.classList.toggle('ui-on', on); xh.classList.toggle('ui-busy', on && !w.raised); xh.classList.toggle('ui-low', on && w.low); xh.classList.toggle('ui-hitm', on && w.hit);
+    if (on) xh.style.setProperty('--g', (9 - w.aim * 5).toFixed(1) + 'px');
+    if (dot) dot.style.display = on ? 'none' : '';
+  }
+  function weaponReadout() {
+    var w = null; try { w = TU.weapons && TU.weapons.hudInfo ? TU.weapons.hudInfo() : null; } catch (e) { w = null; }
+    var box = E('ui-wpn'); if (!box) return;
+    if (!w) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    box.classList.toggle('ui-off', !w.drawn);
+    setText('ui-wpn-name', w.short + (w.drawn ? '' : ' · PUT AWAY'));
+    setText('ui-wpn-ammo', w.ammo); setCls('ui-wpn-ammo', w.low ? 'warn' : '');
+    var bw = E('ui-bw-wpn'); if (bw) bw.style.visibility = w.charge != null ? 'visible' : 'hidden';
+    if (w.charge != null) setBar('wpn', w.charge, '');
+    setText('ui-wpn-lbl', w.label || (w.drawn ? '' : K.keyName('Digit4') + ' TO DRAW'));
+  }
+  // Mouse buttons and the wheel have readable names on the Controls screen.
+  var baseKeyName = K.keyName;
+  K.keyName = function (code) { return code === 'MouseRight' ? 'Right click' : code === 'MouseLeft' ? 'Click' : baseKeyName(code); };
+
   // Warnings and damage overlays.
   function damage(P) {
     var cut = 0, untaped = 0, list = P.injuries || [], names = [];

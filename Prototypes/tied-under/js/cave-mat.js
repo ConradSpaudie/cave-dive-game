@@ -185,6 +185,16 @@
           '}',
           '#endif',
           'alb = mix(alb, alb * vec3(0.92, 0.95, 1.08), old * 0.6);',
+          // the Beyond (endless segments): cave.js writes -(1 + variant) into the daylight slot
+          'float bey = -min(vInfo.y, 0.0), bv = floor(bey - 0.5);',
+          'if (bey > 0.5) {',
+          '  if (bv < 0.5) { alb = mix(alb, vec3(0.66, 0.64, 0.66) * (0.8 + 0.3 * fine), 0.35 * smoothstep(0.45, 0.75, big)); }',          // The Hollow: pale bone-grey hollows
+          '  else if (bv < 1.5) { float rv = smoothstep(0.86, 0.95, 1.0 - abs(2.0 * vn(vec3(wp.x * 1.3, wp.y * 0.22, wp.z * 1.3) + 13.0) - 1.0));',
+          '    alb = mix(alb, vec3(0.16, 0.05, 0.03) * (0.8 + 0.4 * fine), rv * 0.85); }',                                            // The Root: dark red root veins
+          '  else if (bv < 2.5) { alb *= 0.62 + 0.2 * smoothstep(0.6, 0.9, mid); }',                                                  // The Glass Dark: obsidian
+          '  else if (bv < 3.5) { float bn = smoothstep(0.8, 0.88, vn(wp * 2.4 + 77.0)); alb = mix(alb, vec3(0.8, 0.76, 0.64), bn * 0.8); }', // The Bone Choir: bone flecks
+          '  else { alb = mix(alb, alb * vec3(0.8, 1.05, 0.95), 0.6); }',                                                            // The Still Sea: green tint
+          '}',
           'diffuseColor.rgb = alb;',
           // relief height (meters) for the bumped normal
           '#ifdef CAVE_LOW',
@@ -201,7 +211,8 @@
         .replace('#include <roughnessmap_fragment>', [
           '#include <roughnessmap_fragment>',
           'roughnessFactor = clamp(roughnessFactor * (0.9 + 0.2 * mid) - 0.12 * calc - 0.08 * bio, 0.3, 1.0);',
-          'roughnessFactor = mix(roughnessFactor, 0.36 + 0.3 * fine, wet);'
+          'roughnessFactor = mix(roughnessFactor, 0.36 + 0.3 * fine, wet);',
+          'if (bey > 0.5 && bv > 1.5 && bv < 2.5) roughnessFactor = min(roughnessFactor, 0.32 + 0.2 * fine);' // the Glass Dark shines
         ].join('\n'))
         .replace('#include <normal_fragment_maps>', [
           '#include <normal_fragment_maps>',
@@ -215,6 +226,13 @@
           '  float c1 = vn(cq), c2 = vn(cq * 1.7 + vec3(5.0, 3.0, uTime * 0.21));',
           '  float caus = pow(1.0 - abs(c1 - c2) * 2.0, 7.0) * smoothstep(-0.2, 0.7, wn.y);',
           '  totalEmissiveRadiance += diffuseColor.rgb * uDayCol * day * day * (0.12 + 0.8 * caus);',
+          '}',
+          // the Beyond glows faintly: specks of living light in the rock, a color per zone, slowly pulsing
+          'if (bey > 0.5) {',
+          '  float spk = smoothstep(0.9, 0.97, vn(wp * 2.2 + 41.0 + bv * 7.0)) * smoothstep(0.45, 0.7, vn(wp * 0.3 + 3.0 + bv));',
+          '  vec3 bc = bv < 0.5 ? vec3(0.3, 0.85, 1.0) : bv < 1.5 ? vec3(1.0, 0.32, 0.1) : bv < 2.5 ? vec3(0.62, 0.42, 1.0) : bv < 3.5 ? vec3(0.95, 0.9, 0.6) : vec3(0.3, 1.0, 0.55);',
+          '  float pls = 0.6 + 0.4 * sin(uTime * 0.7 + vn(wp * 0.15) * 12.0);',
+          '  totalEmissiveRadiance += bc * spk * pls * 0.45;',
           '}'
         ].join('\n'));
     };

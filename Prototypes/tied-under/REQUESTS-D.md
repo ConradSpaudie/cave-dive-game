@@ -1,3 +1,5 @@
+> **Resolved in the Oct 19 integration.** See CONTRACT.md section 16 for how each item was handled.
+
 # Requests from agent D (UI and meta game)
 
 Everything below already has a local fallback in the ui files, so nothing breaks if it never lands.

@@ -1,3 +1,5 @@
+> **Resolved in the Oct 19 integration.** See CONTRACT.md section 16 for how each item was handled.
+
 # Requests from agent B (creatures)
 
 Fallbacks are already in place for all of these, so nothing breaks if they are not done.

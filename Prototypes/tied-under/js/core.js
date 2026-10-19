@@ -182,8 +182,8 @@
       hold: 0.4,             // m/s^2, small constant push while a move key is held
       strafe: 0.8,           // sideways kicks are this fraction of forward
       vertical: 0.9,         // Space / C vertical kick fraction
-      sprintKick: 1.8,       // x kick strength while sprinting
-      sprintInterval: 0.6,   // x kick interval while sprinting (faster rhythm)
+      sprintKick: 2.3,       // x kick strength while sprinting (stronger kicks, not much faster ones)
+      sprintInterval: 0.8,   // x kick interval while sprinting (rhythm only 25% faster, owner feedback Oct 19)
       slowInterval: 1.25,    // x kick interval while slow breathing
       squeezeThrust: 0.5,    // x push inside a squeeze
       squeezeDrag: 1.6,      // x drag inside a squeeze
@@ -203,6 +203,7 @@
       panicMul: 0.8,         // at panic 100 you use 80% more air
       slowMul: 0.6,          // x air while slow breathing
       depthPer: 100,         // m, air use grows by 1x per this many meters
+      depthMax: 2.5,         // x, cap on the depth factor (reached at 150 m): the endless Beyond (250 m and deeper) stays playable
       inflateCost: 1.2,      // bar/s while breathing into the vest
       deflateRefund: 0.5,    // bar/s you get back while sucking vest air back
       refillRate: 12,        // bar/s refill while surfaced in air
@@ -329,6 +330,26 @@
     cold: { drain: 1.6, warmRegen: 3.5, warmAt: 21 },  // stamina/s at full cold, stamina/s, degrees C
     tank: { pickupDist: 1.8, dropStamina: 15, sink: 0.55 }, // m, stamina, m/s
     lantern: { range: 7.5, perBright: 0.45 },          // m, intensity per creature brightness point
+    // Being held by a predator (TU.player.setHeld): kick x while held, 1/s pull follow rate, grip removed per alternating A / D tap,
+    // stamina per tap, s a hold lasts without a refresh from the predator.
+    held: { kick: 0.25, follow: 7, struggle: 0.08, stamina: 1.5, timeout: 0.25 },
+    // Weapons (weapons.js). Damage is in creature hit points (a medium predator has about 100 hp).
+    // cost: $ at the Gear Tent (0 = free starter). Ammo packs: [$ per pack, how many per pack, most you can carry into a dive].
+    weapons: {
+      knife:     { damage: 16, reach: 1.15, cooldown: 0.55, hitAt: 0.13, cost: 0 },                          // hp, m, s, s into the swing
+      polespear: { damage: 32, reach: 2.2, cooldown: 1.15, windup: 0.22, thrust: 0.14, cost: 0 },            // hp, m, s, s, s
+      speargun:  { damage: 58, speed: 21, drag: 0.85, sink: 0.7, line: 11, reload: 2.8, reel: 3.2, pull: 2.6, snapAfter: 1.6, pickup: 1.6, cost: 650, pack: [40, 1, 4] }, // hp, m/s, 1/s, m/s^2, m, s, m/s, m/s, s, m
+      jet:       { damage: 5, range: 5.5, cone: 0.3, push: 8.5, stun: 1.6, air: 7, recoil: 2.4, cooldown: 0.95, panic: 4, silt: 120, cost: 450 }, // hp, m, rad, m/s, s, bar, m/s, s, panic, particles
+      bangstick: { damage: 420, reach: 1.45, radius: 4.2, stun: 3.2, reload: 3.4, panic: 16, shake: 1.6, cost: 900, pack: [70, 2, 3] }, // hp, m, m, s, s, panic, shake
+      flare:     { damage: 8, speed: 15, drag: 1.25, sink: 0.35, burn: 60, scare: 9, light: 2.4, reload: 2.4, cost: 350, pack: [45, 3, 4] }, // hp, m/s, 1/s, m/s^2, s, m, intensity, s
+      baton:     { damage: 9, radius: 3.0, stun: 2.6, battery: 6, cooldown: 2.0, cost: 520 },                // hp, m, s, % battery, s
+      aimZoom: 1.18,         // x camera zoom while holding right mouse
+      noiseRadius: 22        // m, how far a loudness 1 shot carries (for predators listening to weapon:noise)
+    },
+    // Dynamic point and spot lights in the cave scene (fixed counts so shaders never recompile mid-dive).
+    // fx: ambient + flashlight spot + bounce + lantern + daylight; waypoints, creatures, weapons, glow sticks, cave core and endless ring.
+    // The test (tests/test_flow.py) checks the total stays at or under lightBudget.
+    lights: { budget: 14, glowSticks: 3, weapon: 1 },
     debug: { enabled: true, freeLantern: false }       // freeLantern: a 2-slot jar even without buying the lantern
   };
   // A frozen copy of the defaults so "Reset feel" can restore them.
@@ -368,6 +389,9 @@
       leaderboards: { deepest: [], fastest: [], airLeft: [], explored: [], longest: [] },
       // graphics: 'low' | 'medium' | 'high'; autoQuality: lower the render scale when frames are slow
       settings: { muted: false, fastDrain: false, tips: true, tune: {}, hudHidden: false, graphics: 'high', autoQuality: true },
+      // Weapons (weapons.js, ui-camp.js): what you own, the primary you take into the next dive, ammo in stock.
+      // The dive knife is always carried. ammo: speargun spears, bang stick rounds, flare gun flares.
+      weapons: { owned: { knife: true, polespear: true }, selected: 'polespear', ammo: { spears: 0, bang: 0, flares: 0 } },
       ui: {} // agent D fills it (story, HUD layout, locker, stock, haul, trophies, contracts, camp)
     };
   }
@@ -508,6 +532,7 @@
     isDry: function (pos) { return false; },
     waterSurfaceY: function (pos) { return null; },
     zoneAt: function (pos) { return zoneInfo(-pos.y); },
+    segmentAt: function (pos) { return 0; },
     areaAt: function (pos) { return null; },
     randomSpot: function (opts, rand) { return null; },
     spot: function (name) { return null; },
@@ -526,7 +551,17 @@
     catch: function (id) { return { ok: false, reason: 'missing' }; },
     measure: function (id) { return null; },
     seenCount: function () { return 0; },
-    total: function () { return 0; }
+    total: function () { return 0; },
+    // Combat and predators (creatures.js, creatures-predators.js). Stubs so weapons work with /?drop=creatures.
+    raycastHit: function (origin, dir, maxDist) { return null; },
+    damage: function (id, amount, opts) { return { hp: 0, maxHp: 0, killed: false }; },
+    impulse: function (id, vec) { },
+    stunArea: function (pos, radius, seconds) { return 0; },
+    inRadius: function (pos, radius, opts) { return []; },
+    inkAt: function (pos) { return 0; },
+    grabbedBy: function () { return null; },
+    struggle: function (amount) { return false; },
+    releaseGrab: function () { return false; }
   };
 
   // player.js (agent C) replaces these. The state object shape is the contract (see CONTRACT.md).
@@ -543,7 +578,8 @@
       tYaw: 0, tPitch: 0, airTotal: 200, airTotalMax: 200, health: 100, bleed: 0, bleedOut: 0, bloodMask: 0, maskWater: 0, maskFlood: 0, maskSlosh: 0,
       maskClearing: false, grab: false, caught: false, currentSpeed: 0, tug: null, stuck: 0, dry: false, rag: 0, daze: 0,
       lanternOut: false, lanternLevel: 0, headlamp: false, wristRaised: false, carried: 1, kickMul: 1, maimed: null, warm: false,
-      quake: 0, shock: 0, drownSeconds: 4, measure: null, anim: {}
+      quake: 0, shock: 0, drownSeconds: 4, measure: null, anim: {},
+      held: null       // { id, kind, strength } while a predator holds you (TU.player.setHeld)
     },
     lamp: { pos: v3(0, 0, 0), dir: v3(0, 0, -1), on: 0, color: null, cosOuter: Math.cos(0.42), cosInner: Math.cos(0.2), range: 14 },
     input: { keys: {}, touch: null },
@@ -557,7 +593,19 @@
     look: function (yaw, pitch) { },
     enableTouch: function () { },
     setAir: function (bar, allTanks) { },
-    cameraForward: function () { return v3(0, 0, -1); }
+    cameraForward: function () { return v3(0, 0, -1); },
+    // Changing the diver from other modules (weapons, glow sticks, predators). The stubs do nothing;
+    // callers fall back harmlessly when these return false.
+    calm: function (amount) { return 0; },
+    addPanic: function (n) { return 0; },
+    applyRecoil: function (vec) { },
+    addShake: function (n) { },
+    useBattery: function (frac) { return false; },
+    setHeld: function (byId, pullVec, opts) { return false; },
+    release: function (byId) { return false; },
+    releaseHeld: function (byId) { return false; },
+    isHeld: function () { return null; },
+    bindings: []
   };
 
   // fx.js (agent C) replaces these.
@@ -581,7 +629,41 @@
     setVolume: function (v) { },
     play: function (name, params) { },
     suspend: function () { },
-    resume: function () { }
+    resume: function () { },
+    sounds: function () { return []; },
+    // audio.js sets these once the AudioContext exists (after the first click): other modules synthesize their
+    // own sounds into TU.audio.out (goes through the master volume and mute) and never open a second context.
+    ctx: null,
+    out: null
+  };
+
+  // weapons.js replaces these (see CONTRACT.md "Weapons").
+  TU.weapons = {
+    defs: {},
+    list: function () { return []; },
+    owned: function (id) { return id === 'knife' || id === 'polespear'; },
+    current: function () { return null; },
+    drawn: function () { return false; },
+    hudInfo: function () { return null; },
+    pose: function () { return null; },
+    select: function (id) { return false; },
+    buy: function (id) { return { ok: false, reason: 'missing' }; },
+    buyAmmo: function (id) { return { ok: false, reason: 'missing' }; },
+    fire: function () { return false; },
+    reload: function () { return false; },
+    holster: function (on) { return false; },
+    swap: function () { return false; }
+  };
+
+  // glowsticks.js replaces these (endless depth agent).
+  TU.glowsticks = {
+    throwStick: function (opts) { return null; },
+    list: function () { return []; },
+    count: function () { return 0; },
+    near: function (pos, r) { return 0; },
+    calmAt: function (pos) { return 0; },
+    clear: function () { },
+    lights: function () { return []; }
   };
 
   // ui.js (agent D) replaces these.

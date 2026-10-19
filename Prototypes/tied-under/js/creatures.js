@@ -100,6 +100,16 @@
     ancient_blindfish: sp({ id: 'ancient_blindfish', name: 'The Old Blind One', type: 'Fish', zones: [4], behavior: 'harmless', glows: false, brightness: 0, rarity: 'legendary', sizeM: [6, 12], colors: [0xC6C1B6, 0x6F6A64], shape: 'ancient_blindfish',
       note: 'A blind fish older than the cave map. It circles the bottom in total darkness and never notices you.', move: 'giant', place: 'bottom', groups: 1, speed: 0.55, cap: 1 })
   };
+  // Combat fields (see "Combat" below): danger 0..5 (logbook rating, raises the bounty), hp (hit points,
+  // one basic spear hit is about 10; leave it out to size it from the body), blood ('red' | 'blue' | 'pale' | 'none').
+  SPECIES.entrance_crayfish.danger = 1; SPECIES.entrance_crayfish.blood = 'pale';
+  SPECIES.remipede.danger = 1; SPECIES.remipede.blood = 'pale';
+  SPECIES.volt_eel.danger = 3; SPECIES.volt_eel.hp = 30;
+  SPECIES.lanternjaw.danger = 3; SPECIES.lanternjaw.hp = 25;
+  SPECIES.deep_lobefin.hp = 40; SPECIES.ancient_blindfish.hp = 400;
+  ['glass_shrimp', 'giant_isopod', 'rockcrawler'].forEach(function (k) { SPECIES[k].blood = 'pale'; });
+  ['halo_jelly', 'sea_firefly'].forEach(function (k) { SPECIES[k].blood = 'none'; SPECIES[k].hp = 2; });
+  SPECIES.spiral_drifter.blood = 'blue';
   var RARITY_CHANCE = { common: 1, uncommon: 0.85, rare: 0.55, very_rare: 0.35, legendary: 1 };
   var BOUNTY = { // Design/Economy and Progression.md, logbook bounties ($)
     species: { common: 25, uncommon: 60, rare: 150, very_rare: 400, legendary: 1000 },
@@ -109,13 +119,16 @@
   };
   // Variant logbook lines ('olm:shiny'). They are hidden from Object.keys(SPECIES) but SPECIES['olm:shiny'].name works.
   var VARIANT_NAMES = { shiny: 'golden', juvenile: 'juvenile', giant: 'giant' };
-  Object.keys(SPECIES).forEach(function (id) {
+  function addVariants(id) {
     Object.keys(VARIANT_NAMES).forEach(function (v) {
       var base = SPECIES[id];
-      Object.defineProperty(SPECIES, id + ':' + v, { enumerable: false, value: { id: id + ':' + v, variantOf: id, variant: v, name: base.name + ' (' + VARIANT_NAMES[v] + ')', type: base.type, zones: base.zones, behavior: base.behavior, glows: base.glows, brightness: base.brightness, rarity: base.rarity, sizeM: base.sizeM, colors: base.colors, shape: base.shape, note: base.note } });
+      Object.defineProperty(SPECIES, id + ':' + v, { enumerable: false, configurable: true, value: { id: id + ':' + v, variantOf: id, variant: v, name: base.name + ' (' + VARIANT_NAMES[v] + ')', type: base.type, zones: base.zones, behavior: base.behavior, glows: base.glows, brightness: base.brightness, rarity: base.rarity, sizeM: base.sizeM, colors: base.colors, shape: base.shape, note: base.note, danger: base.danger || 0, predator: !!base.predator } });
     });
-  });
+  }
+  Object.keys(SPECIES).forEach(addVariants);
   var IDS = Object.keys(SPECIES);
+  // Other creature files (creatures-predators.js) add species here, before the first dive.
+  L.addSpecies = function (o) { sp(o); SPECIES[o.id] = o; addVariants(o.id); if (IDS.indexOf(o.id) < 0) IDS.push(o.id); return o; };
 
   /* ------------------------------------------------------------------ */
   /* State                                                               */
@@ -177,12 +190,19 @@
       variant: variant, shiny: variant === 'shiny',
       seen: false, caught: false, measured: false, photographed: false, flee: 0, hint: {}, active: false,
       ph: rand() * 20, amp: 1, glow: 1, act: 0, spin: rand() * Math.PI * 2, wt: pos.clone(), wtT: 0, cool: 0, warn: 0, warned: false, timer: rand() * 5, st: 'idle', stT: 0,
-      group: opts.group || null, rnd: rand(), debug: !!opts.debug, dist: 1e9
+      group: opts.group || null, rnd: rand(), debug: !!opts.debug, dist: 1e9,
+      // combat state: hit points, death, stun, pushes, the predator warning glow (tell 0..1), body roll (radians)
+      hp: 0, maxHp: 0, dead: false, deadT: 0, stun: 0, imp: new T.Vector3(), roll: 0, tell: 0, hurtT: 0, enrage: 0, gone: false
     };
+    c.maxHp = c.hp = hpFor(s, size);
     if (s.move === 'swarm') initSwarm(c, rand);
     return c;
   }
-  function addRec(c) { recs.push(c); if (c.group) c.group.members.push(c); return c; }
+  // Every record remembers its cave segment (endless mode frees old segments; their creatures go with them).
+  function addRec(c) {
+    if (c.seg == null) { var sg = typeof TU.cave.segmentAt === 'function' ? TU.cave.segmentAt(c.home || c.pos) : 0; c.seg = sg >= 0 ? sg : (TU.cave.endless && TU.cave.endless.segment ? TU.cave.endless.segment() : 0); }
+    recs.push(c); if (c.group) c.group.members.push(c); return c;
+  }
 
   function initSwarm(c, rand) {
     var n = c.sp.swarmN, off = new Float32Array(n * 3), seed = new Float32Array(n);
@@ -225,11 +245,13 @@
   // Ceiling spots in dry air (air pockets and dry chambers), found with raycasts from the cave features.
   // Dry chambers come first (big dry ceilings, the "night sky"), then air pocket domes. Sources in the
   // asked depth zone are preferred; if there are none, any dry ceiling will do.
-  function dryCeilingSpots(rand, n, zone) {
+  // seg (optional): only air sources in that cave segment (endless mode).
+  function dryCeilingSpots(rand, n, zone, seg) {
     var out = [], F = TU.cave.features || {}, all = [];
     (F.dryChambers || []).forEach(function (d) { all.push({ pos: d.pos, r: d.size ? Math.max(d.size.x, d.size.z) * 0.45 : 5, y: d.floorY != null ? d.floorY + 1 : d.pos.y, dry: true }); });
     (F.airPockets || []).forEach(function (a) { all.push({ pos: a.pos, r: a.radius || 6, y: (a.surfaceY != null ? a.surfaceY : a.pos.y) + 0.3 }); });
-    var srcs = zone == null ? all : all.filter(function (q) { return U.zoneOfDepth(Math.max(0, -q.y)) === zone; });
+    if (seg != null) { all = all.filter(function (q) { return TU.cave.segmentAt(q.pos) === seg; }); if (!all.length) return out; }
+    var srcs = zone == null || seg != null ? all : all.filter(function (q) { return U.zoneOfDepth(Math.max(0, -q.y)) === zone; });
     if (!srcs.length) srcs = all;
     for (var i = 0; i < n * 6 && out.length < n && srcs.length; i++) {
       var s = srcs[i % srcs.length], a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * s.r * 0.8;
@@ -252,7 +274,7 @@
     var diff = TU.run && TU.run.difficulty === 'easy' ? 1.2 : 1;
     IDS.forEach(function (sid) {
       var s = SPECIES[sid];
-      if (s.place === 'bottom') return; // the giant is placed below
+      if (s.place === 'bottom' || s.predator) return; // the giant is placed below, predators by creatures-predators.js
       var zones = [];
       s.zones.forEach(function (zz) { if (has[zz]) zones.push([zz, 1]); else if (zz > maxZ && zones.every(function (q) { return q[0] !== maxZ; })) zones.push([maxZ, 0.5]); });
       zones.forEach(function (zq) {
@@ -270,7 +292,54 @@
       });
     });
     placeGiant(rand);
+    L.censusHooks.forEach(function (fn) { fn(rand, has, maxZ); });
   }
+
+  // Endless mode: a new cave segment opened under the ring (cave:segment state 'open'). Its zones are the Beyond
+  // (5 and up); they get the deepest species set (everything that lives in the Old Water, zone 4), the giant
+  // circling the new ring, and predators (creatures-predators.js segmentHooks). Deterministic per segment seed.
+  function segmentCensus(e) {
+    var rand = TU.rng(((e.seed || 1) + (e.index || 0) * 977) >>> 0, 21).fn(), zones = [];
+    for (var z = e.zone || 5; z < (e.zone || 5) + 4; z++) { var sp = null; for (var k = 0; k < 3 && !sp; k++) sp = TU.cave.randomSpot({ zone: z }, rand); if (sp && TU.cave.segmentAt(sp.pos) === e.index) zones.push(z); }
+    if (!zones.length) return 0;
+    var diff = TU.run && TU.run.difficulty === 'easy' ? 1.2 : 1, before = recs.length;
+    zones.forEach(function (zone, zi) {
+      var share = zi === 0 ? 1 : 0.6; // the first zone of a segment is the biggest part of it
+      IDS.forEach(function (sid) {
+        var s = SPECIES[sid];
+        if (s.place === 'bottom' || s.predator || s.zones.indexOf(4) < 0) return;
+        var nG = Math.max(1, Math.round(s.groups * share * diff));
+        if (s.place === 'ceilingDry') {
+          if (zi === 0) dryCeilingSpots(rand, nG, zone, e.index).forEach(function (spt) { if (rand() < RARITY_CHANCE[s.rarity]) addRec(makeRec(sid, spt.pos, rand, { zone: zone, normal: spt.normal })); });
+          return;
+        }
+        for (var g = 0; g < nG; g++) {
+          if (rand() > RARITY_CHANCE[s.rarity]) continue;
+          var spot = findSpot(s, zone, rand, false);
+          if (!spot || TU.cave.segmentAt(spot.pos) !== e.index) continue;
+          spawnGroup(sid, spot, rand).forEach(function (c) { c.seg = e.index; });
+        }
+      });
+    });
+    var nb = recs.length; placeGiant(rand); for (var i = nb; i < recs.length; i++) recs[i].seg = e.index;
+    L.segmentHooks.forEach(function (fn) { try { fn(rand, e, zones); } catch (err) { console.error('[TU] creatures segment hook failed', err); } });
+    return recs.length - before;
+  }
+  // The oldest segment was freed (its rock is gone): its creatures go too (except ones in your lantern jar).
+  function freeSegmentCreatures(index) {
+    var n = 0;
+    for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.seg === index && !c.caught && !c.gone) { removeRec(c); n++; } }
+    sweepGone();
+    return n;
+  }
+  TU.on('cave:segment', function (e) {
+    if (!e) return;
+    try {
+      if (e.state === 'open') segStats.spawned = segmentCensus(e);
+      else if (e.state === 'freed') segStats.removed = freeSegmentCreatures(e.index);
+    } catch (err) { console.error('[TU] creatures could not follow the new segment', err); }
+  });
+  var segStats = { spawned: 0, removed: 0 };
   // One spawn group at a spot: schools get a shared group object, others spawn singles around the spot.
   function spawnGroup(sid, spot, rand) {
     var s = SPECIES[sid], n = s.group[0] + Math.floor(rand() * (s.group[1] - s.group[0] + 1)), out = [];
@@ -327,14 +396,16 @@
     for (var i = 0; i < recs.length; i++) {
       var c = recs[i]; if (c.caught) { c.active = false; continue; }
       c.dist = c.pos.distanceTo(ppos);
-      var big = c.sp.move === 'giant' ? 30 : 0;
+      var big = c.sp.move === 'giant' || c.sp.move === 'maw' ? 30 : c.sp.predator ? 14 : 0; // giants are seen from far away; predators hunt (smell blood) from farther
       if (c.active) { if (c.dist > C.sleepRadius + big) c.active = false; }
       else if (c.dist < C.activeRadius + big) c.active = true;
       if (c.active) n++;
     }
     // too many: put the farthest to sleep
     if (n > C.maxActive) {
-      var act = recs.filter(function (c) { return c.active; }).sort(function (a, b) { return a.dist - b.dist; });
+      // predators keep their place before prey (they are few and must keep hunting)
+      var key = function (c) { return c.sp.predator && !c.dead ? c.dist * 0.3 : c.dist; };
+      var act = recs.filter(function (c) { return c.active; }).sort(function (a, b) { return key(a) - key(b); });
       for (i = C.maxActive; i < act.length; i++) act[i].active = false;
       n = C.maxActive;
     }
@@ -413,6 +484,13 @@
     var s = c.sp, d = c.dist = c.pos.distanceTo(P.pos);
     c.cool -= dt; c.timer -= dt; c.stT += dt;
     if (c.flee > 0) c.flee -= dt;
+    if (c.hurtT > 0) c.hurtT -= dt;
+    if (c.enrage > 0) c.enrage -= dt;
+    applyImpulse(c, dt);
+    if (c.dead) { deadStep(c, i, dt, P); return; }
+    if (c.stun > 0) { stunStep(c, i, dt); checkSeen(c, d); return; }
+    var mv = MOVERS[s.move];
+    if (mv) { mv(c, i, dt, P, d); checkSeen(c, d); return; }
     var baseGlow = 0.8 + 0.2 * Math.sin(time * (Math.PI * 2 / (3 + c.rnd * 3)) + c.ph);
     var animRate = 1, amp = 1, act = 0;
     switch (s.move) {
@@ -464,6 +542,7 @@
           }
           if (c.shockT > 0) c.shockT -= dt;
         } else if (P.speed > C.fleeSpeed && d < 4) startFlee(c, 2.5);
+        if (c.enrage > 0) { c.wt.copy(P.pos); spd = s.speed * 2.6; } // hurt: it comes for you
         if (c.flee > 0) { tmpV.subVectors(c.pos, P.pos).normalize(); c.wt.copy(c.pos).addScaledVector(tmpV, 3); spd *= 3; }
         seek(c, c.wt, spd, 0.5, dt, 0.8);
         amp = 0.7 + Math.min(1.2, c.vel.length() / (s.speed + 0.01)); animRate = 0.8 + c.vel.length() * 1.5;
@@ -477,14 +556,17 @@
           // territorial: claws up and snapping when you hover close, a pinch if you stay
           if (d < 1.5) { c.warn += dt; warn(c, 'pinch'); act = 0.45 + 0.35 * Math.sin(time * 9 + c.ph) * Math.sin(time * 3.1); }
           else { c.warn = Math.max(0, c.warn - dt); if (d > 2.5) c.warned = false; }
-          if (c.warn > 1.3 && d < 1.05 && c.cool <= 0) { attack(c, 'pinch', { severity: 0.25, injury: 'cut', panic: 12 }); c.cool = 4; c.snapT = 0.25; }
+          if (c.warn > 1.3 && d < 1.15 && c.cool <= 0) { attack(c, 'pinch', { severity: 0.25, injury: 'cut', panic: 12 }); c.cool = 4; c.snapT = 0.25; }
           if (c.snapT > 0) { c.snapT -= dt; act = 1; }
           sp3 = d < 1.5 ? 0 : 0.04;
         }
         var wantPlayer = s.id === 'giant_isopod' && P.injuries && P.injuries.length > 0 && d < 12;
+        if (s.id === 'giant_isopod' && !wantPlayer && (stepNo + i) % 30 === 0) c.carcass = nearestCarcass(c.pos, 14);
+        if (c.carcass && (c.carcass.gone || !c.carcass.dead)) c.carcass = null;
         if (c.st === 'pause') { if (c.stT > 3 + c.rnd * 4) { c.st = 'idle'; c.stT = 0; } sp3 = 0; }
         else if (c.stT > 5 + c.rnd * 6 && !wantPlayer) { c.st = 'pause'; c.stT = 0; }
         if (wantPlayer) c.wt.copy(P.pos);
+        else if (c.carcass) { c.wt.copy(c.carcass.pos); c.wtT = 1; sp3 = Math.max(sp3, 0.06); }
         else if (c.wtT <= 0 || c.pos.distanceTo(c.wt) < 0.1) newWander(c, Math.max(0.5, c.scale * 6), 1);
         c.wtT -= dt;
         // move in the plane of the rock
@@ -596,19 +678,22 @@
     }
     if (s.id === 'deep_lobefin' && c.st === 'stand') c.dir.lerp(tmpV.set(c.dir.x * 0.3, -1, c.dir.z * 0.3).normalize(), 1 - Math.exp(-dt * 0.6)).normalize();
     c.amp = lerp(c.amp, amp, 1 - Math.exp(-dt * 3));
+    if (c.hurtT > 0) c.amp = Math.max(c.amp, 1.7); // flinch
     c.ph += dt * animRate * animSpeed(s) * (0.7 + 0.3 * c.amp);
     if (s.id === 'volt_eel') { var cr = smooth(0, 1.2, c.warn); baseGlow = (c.shockT > 0 ? 6 : 0) + cr * (Math.random() < 0.35 ? 2.2 : 0.3) + 0.04; }
     if (s.move !== 'ambush' && s.id !== 'entrance_crayfish') act = c.act * Math.exp(-dt * 4);
     c.act = act;
     c.glow = baseGlow * (c.shiny ? 1.5 : 1);
-    // "seen": close and near the middle of the view (first time only)
-    if (!c.seen && d < C.seenDist + c.scale) {
-      var cam = TU.camera; tmpV.subVectors(c.pos, cam.position).normalize(); tmpV2.set(0, 0, -1).applyQuaternion(cam.quaternion);
-      if (tmpV.dot(tmpV2) > C.seenDot) { c.seen = true; TU.emit('creature:seen', { id: c.id, speciesId: c.speciesId, variant: c.variant }); }
-    }
+    checkSeen(c, d);
+  }
+  // "seen": close and near the middle of the view (first time only)
+  function checkSeen(c, d) {
+    if (c.seen || d >= C.seenDist + c.scale) return;
+    var cam = TU.camera; tmpV.subVectors(c.pos, cam.position).normalize(); tmpV2.set(0, 0, -1).applyQuaternion(cam.quaternion);
+    if (tmpV.dot(tmpV2) > C.seenDot) { c.seen = true; TU.emit('creature:seen', { id: c.id, speciesId: c.speciesId, variant: c.variant }); }
   }
   // Animation speed (radians of body wave per second) per kind of movement.
-  function animSpeed(s) { return s.move === 'jelly' ? 1.6 : s.move === 'crawl' ? 3.5 : s.move === 'still' ? 1 : s.move === 'swarm' ? 1 : s.move === 'giant' ? 3 : s.move === 'eel' ? 5 : s.move === 'drift' ? 1.2 : 7; }
+  function animSpeed(s) { if (s.animK) return s.animK; return s.move === 'jelly' ? 1.6 : s.move === 'crawl' ? 3.5 : s.move === 'still' ? 1 : s.move === 'swarm' ? 1 : s.move === 'giant' ? 3 : s.move === 'eel' ? 5 : s.move === 'drift' ? 1.2 : 7; }
 
   // World position of the lure (for the Lanternjaw) or the creature center.
   function lurePos(c, out) {
@@ -624,7 +709,7 @@
   // Build m4 (position, orientation, scale) for a record. Models face +Z with +Y up.
   function basis(c) {
     var s = c.sp, sc = c.drawScale || c.scale;
-    if (s.move === 'still' || (s.place === 'floor' && s.move === 'crawl') || s.move === 'crawl') {
+    if (s.move === 'still' || s.move === 'crawl' || c.surfaceUp) {
       by.copy(c.up);
       if (s.move === 'still') { tmpV.set(Math.cos(c.spin), 0, Math.sin(c.spin)); if (Math.abs(tmpV.dot(by)) > 0.9) tmpV.set(1, 0, 0); bz.copy(tmpV).addScaledVector(by, -tmpV.dot(by)).normalize(); }
       else { bz.copy(c.dir).addScaledVector(by, -c.dir.dot(by)); if (bz.lengthSq() < 1e-5) bz.set(1, 0, 0).addScaledVector(by, -by.x); bz.normalize(); }
@@ -636,15 +721,16 @@
       if (s.upsideDown) by.negate();
     }
     bx.crossVectors(by, bz).normalize(); by.crossVectors(bz, bx);
+    if (c.roll) { var cr = Math.cos(c.roll), sr = Math.sin(c.roll); _rv.copy(bx).multiplyScalar(cr).addScaledVector(by, sr); by.multiplyScalar(cr).addScaledVector(bx, -sr); bx.copy(_rv); } // roll around the body axis (dead fish go belly up)
     m4.makeBasis(bx, by, bz); m4.scale(sc3.set(sc, sc, sc)); m4.setPosition(c.pos);
     return m4;
   }
-  var _hm = new T.Matrix4(), _hv = new T.Vector3(), _col = new T.Color();
+  var _hm = new T.Matrix4(), _hv = new T.Vector3(), _col = new T.Color(), _rv = new T.Vector3();
   function draw() {
     var lists = {}, k;
     for (k in pools) pools[k].items.length = 0;
     if (show) show.recs.forEach(function (c) { pool(c.speciesId).items.push(c); });
-    for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.active && !c.caught) pool(c.speciesId).items.push(c); }
+    for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.active && !c.caught && !c.gone) pool(c.speciesId).items.push(c); }
     haloN = 0;
     for (k in pools) {
       var P = pools[k], s = P.sp, items = P.items, n = 0, ai = P.aInst.array, ci = P.iCol.array, im = P.meshes[0] && P.meshes[0].instanceMatrix.array;
@@ -659,6 +745,7 @@
         ci[n * 3] = tint ? tint[0] : 1; ci[n * 3 + 1] = tint ? tint[1] : 1; ci[n * 3 + 2] = tint ? tint[2] : 1;
         n++;
         if (s.glows && P.model.halos && halo) addHalos(P, c2, s);
+        if (P.model.tellHalos && halo && c2.tell > 0.02) addTellHalos(P, c2, s);
       }
       P.count = n;
       P.meshes.forEach(function (m) { m.count = n; m.visible = n > 0; });
@@ -697,6 +784,14 @@
       putHalo(_hv, hl[j][3] * c.scale * (c.halo || 1), hl[j][4] * Math.min(2, c.glow), gl);
     }
   }
+  // Predator warning glow: the eyes (or photophores) flare while it is about to strike.
+  function addTellHalos(P, c, s) {
+    var hl = P.model.tellHalos, gl = _col.setHex(s.eyeCol || P.model.bodyMat.glow || 0xffffff), sc = c.drawScale || c.scale;
+    for (var j = 0; j < hl.length && haloN < C.halos; j++) {
+      _hv.set(hl[j][0], hl[j][1], hl[j][2]).applyMatrix4(m4);
+      putHalo(_hv, hl[j][3] * sc, hl[j][4] * Math.min(1.5, c.tell), gl);
+    }
+  }
   function putHalo(p, size, alpha, col) {
     var ha = halo.geometry.attributes, i = haloN++;
     ha.position.array[i * 3] = p.x; ha.position.array[i * 3 + 1] = p.y; ha.position.array[i * 3 + 2] = p.z;
@@ -709,7 +804,7 @@
     if (!lights.length) return;
     var P = TU.player.state, cand = [];
     for (var i = 0; i < recs.length; i++) {
-      var c = recs[i]; if (!c.active || c.caught) continue;
+      var c = recs[i]; if (!c.active || c.caught || c.dead || c.gone) continue;
       var b = c.sp.brightness; if (c.speciesId === 'volt_eel') b = c.shockT > 0 ? 6 : c.warn > 0.3 ? 1.5 : 0;
       if (b < 3) continue;
       cand.push({ c: c, score: b * c.glow / (1 + c.dist * c.dist * 0.05) });
@@ -736,7 +831,9 @@
     var P = TU.player.state;
     if (stepNo % 20 === 1) activation(P.pos);
     for (var g = 0; g < groups.length; g++) { var gg = groups[g]; if (anyActive(gg.members)) stepGroup(gg, dt, P); }
-    for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.active && !c.caught) stepCreature(c, i, dt, P); }
+    for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (c.active && !c.caught && !c.gone) stepCreature(c, i, dt, P); }
+    sweepGone();
+    goreStep(dt); cloudStep(dt);
     if (show) show.recs.forEach(function (c) { animOnly(c, dt); });
   }
   // Animation only (showcase): advance the wave phase and glow without moving.
@@ -746,13 +843,383 @@
     c.glow = (c.sp.id === 'volt_eel' ? 0.35 + 0.25 * Math.sin(c.ph * 3) : 0.85 + 0.15 * Math.sin(time * 1.3 + c.rnd * 5)) * (c.shiny ? 1.5 : 1);
     if (c.sp.move === 'ambush') c.act = show && show.jaw != null ? show.jaw : 0.15;
     if (c.sp.id === 'entrance_crayfish') c.act = show && show.jaw != null ? show.jaw : 0.5;
+    if (c.sp.predator) {
+      // poses for screenshots: show.tell (eyes flare, 0..1), show.jaw (mouth or arms), show.dead
+      c.tell = show && show.tell ? show.tell : 0;
+      c.act = show && show.jaw != null ? show.jaw : (c.sp.idleAct || 0.08);
+      c.glow = (c.sp.glows ? 0.9 + 0.1 * Math.sin(time * 1.3 + c.rnd * 5) : 0.22) + c.tell * 2.2;
+      if (c.sp.move === 'maw' && c.tell > 0.5) c.glow = 0.05 + c.tell * 0.6; // its lure lines go dark before it charges
+    }
+    if (show && show.dead) { c.roll = (c.sp.move === 'crawl' || c.surfaceUp) ? Math.PI : Math.PI * 0.85; c.amp = 0.04; c.act = c.sp.deadJaw == null ? 0.35 : c.sp.deadJaw; c.glow = 0; c.tell = 0; }
   }
   function frame() {
     if (!TU.scene || !TU.camera) return;
     if (show) showcaseFrame();
     draw();
+    goreDraw(); cloudDraw();
     updateLights();
     L.updateShared(TU.camera, show ? show.lamp : TU.player.lamp, show ? 0.06 : 0);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Combat: hit points, hits, deaths, pushes and stuns                  */
+  /* The weapons call raycastHit, damage, impulse, stunArea, inRadius.   */
+  /* One basic spear hit is about 10 damage.                             */
+  /* ------------------------------------------------------------------ */
+  var MOVERS = L.movers = L.movers || {};       // move type -> function (c, i, dt, P, d): predators bring their own brains
+  var DEAD_MOVERS = L.deadMovers = L.deadMovers || {}; // move type -> how the body behaves once dead (default: float or sink)
+  L.hurtHooks = L.hurtHooks || []; L.killHooks = L.killHooks || []; L.censusHooks = L.censusHooks || []; L.segmentHooks = L.segmentHooks || [];
+  var KIND_MUL = { pierce: 1, cut: 1, blunt: 0.6, shock: 1.2, push: 0 };
+  // Hit shapes in model units: r = radius, len = capsule length, lift = how far the center sits above the rock.
+  var HIT_DEF = { fish: { r: 0.12, len: 0.9 }, eel: { r: 0.05, len: 0.95 }, crawl: { r: 0.16, len: 0.9, lift: 0.05 }, ambush: { r: 0.2, len: 0.8 }, giant: { r: 0.1, len: 0.9 }, drift: { r: 0.3, len: 0.6 } };
+  // Hit points: flora has none (cannot be hurt). Otherwise the species value (big ones vary +-10% with size), or sized from the body.
+  function hpFor(s, size) {
+    if (s.kind === 'flora') return 0;
+    if (s.hp) { var k = s.sizeM[1] > s.sizeM[0] ? (size - s.sizeM[0]) / (s.sizeM[1] - s.sizeM[0]) : 0.5; return Math.round(s.hp * (0.9 + 0.2 * k)); }
+    return clamp(Math.round(size * 30), 1, 40);
+  }
+  // How heavy it feels to a push (a 1 m animal is 1).
+  function massK(c) { return clamp(c.scale * c.scale, 0.15, 40); }
+  // The body's capsule (a to b with radius r) or sphere (a = b) in world space.
+  var _ha = new T.Vector3(), _hb = new T.Vector3(), _hc = new T.Vector3();
+  function hitShape(c) {
+    var s = c.sp, sc = c.drawScale || c.scale;
+    if (s.move === 'swarm') { _ha.copy(c.pos); _hb.copy(c.pos); return Math.max(0.15, c.swarmR * (c.spread || 1)); }
+    if (s.move === 'jelly') { _ha.copy(c.pos); _hb.copy(c.pos); return Math.max(0.05, sc * 0.45); }
+    var hd = s.hit || HIT_DEF[s.move] || HIT_DEF.fish, r = Math.max(0.035, sc * hd.r);
+    _hc.copy(c.pos); if (hd.lift && (s.move === 'crawl' || c.surfaceUp)) _hc.addScaledVector(c.up, sc * hd.lift);
+    if (hd.off) _hc.addScaledVector(c.dir, sc * hd.off);
+    var half = Math.max(0, sc * hd.len * 0.5 - r);
+    _ha.copy(_hc).addScaledVector(c.dir, -half); _hb.copy(_hc).addScaledVector(c.dir, half);
+    return r;
+  }
+  // Distance along the ray (o + t d, d unit) to a capsule a-b of radius r, or -1. 0 if the ray starts inside.
+  var _ba = new T.Vector3(), _oa = new T.Vector3(), _oc = new T.Vector3();
+  function rayCapsule(o, d, a, b, r) {
+    _ba.subVectors(b, a); _oa.subVectors(o, a);
+    var baba = _ba.dot(_ba), bard = _ba.dot(d), baoa = _ba.dot(_oa), rdoa = d.dot(_oa), oaoa = _oa.dot(_oa);
+    // inside already?
+    var tt = baba > 1e-9 ? clamp(baoa / baba, 0, 1) : 0; _oc.copy(a).addScaledVector(_ba, tt);
+    if (_oc.distanceToSquared(o) <= r * r) return 0;
+    var A2 = baba - bard * bard, B2 = baba * rdoa - baoa * bard, C2 = baba * oaoa - baoa * baoa - r * r * baba, h = B2 * B2 - A2 * C2;
+    if (A2 > 1e-9 && h >= 0) {
+      var t = (-B2 - Math.sqrt(h)) / A2, y = baoa + t * bard;
+      if (y > 0 && y < baba && t >= 0) return t;
+    }
+    // the round ends
+    var best = -1;
+    for (var k = 0; k < 2; k++) {
+      _oc.subVectors(o, k ? b : a);
+      var bb = d.dot(_oc), cc = _oc.dot(_oc) - r * r, hh = bb * bb - cc;
+      if (hh > 0) { var t2 = -bb - Math.sqrt(hh); if (t2 >= 0 && (best < 0 || t2 < best)) best = t2; }
+    }
+    return best;
+  }
+  // Contract: the nearest creature along a ray. Flora is skipped (shots go through to the rock).
+  // Returns null or { id, species, speciesId, point: Vector3, dist }.
+  function raycastHit(origin, dir, maxDist) {
+    if (!origin || !dir) return null;
+    maxDist = maxDist || 30;
+    var best = null, bestT = maxDist;
+    for (var i = 0; i < recs.length; i++) {
+      var c = recs[i]; if (!c.active || c.caught || c.gone || c.sp.kind === 'flora') continue;
+      var sc = c.drawScale || c.scale, R = sc * 0.6 + 0.2 + (c.swarmR || 0) * 2;
+      tmpV.subVectors(c.pos, origin); var t0 = tmpV.dot(dir);
+      if (t0 < -R || t0 > bestT + R) continue;
+      if (tmpV.lengthSq() - t0 * t0 > R * R) continue;
+      var r = hitShape(c), t = rayCapsule(origin, dir, _ha, _hb, r);
+      if (t >= 0 && t < bestT) { best = c; bestT = t; }
+    }
+    if (!best) return null;
+    return { id: best.id, species: best.speciesId, speciesId: best.speciesId, point: origin.clone().addScaledVector(dir, bestT), dist: bestT };
+  }
+  // Blood (or pale or blue body fluid) where a creature was hit.
+  function bleedFx(c, point, amount, burst) {
+    var b = c.sp.blood || 'red'; if (b === 'none') return;
+    var n = clamp(Math.round(amount * 0.6 * (0.4 + Math.min(1.6, c.scale))), 2, 60);
+    if (b === 'red' && TU.fx && TU.fx.spawnBlood) TU.fx.spawnBlood(n, { pos: point, burst: !!burst });
+    else cloudSpawn(Math.ceil(n * 0.6), { pos: point, col: b === 'blue' ? 0x3B62B8 : 0xD8D2BE, alpha: b === 'blue' ? 0.55 : 0.35, size: [0.04, 0.35 * Math.min(2, 0.5 + c.scale)], speed: burst ? 0.4 : 0.12, life: [3, 6] });
+  }
+  var _dv = new T.Vector3(), _pv = new T.Vector3();
+  function v3of(p, out) { return p ? out.set(p.x, p.y, p.z) : null; }
+  // Contract: hurt a creature. amount in hit points; o: { dir, point, weapon, kind: 'pierce'|'blunt'|'push'|'shock'|'cut' }.
+  // Returns { hp, maxHp, killed } (plus immune for flora, dead for a body that was already dead, gone if it no longer exists).
+  function damage(id, amount, o) {
+    o = o || {};
+    var c = typeof id === 'object' && id ? id : get(id);
+    if (!c || c.gone || c.caught) return { hp: 0, maxHp: 0, killed: false, gone: true };
+    if (!c.maxHp) return { hp: 0, maxHp: 0, killed: false, immune: true };
+    var s = c.sp, kind = o.kind || 'pierce', sc = c.drawScale || c.scale;
+    var point = v3of(o.point, _pv) || _pv.copy(c.pos);
+    var dir = v3of(o.dir, _dv) || _dv.subVectors(c.pos, TU.camera ? TU.camera.position : c.pos);
+    if (dir.lengthSq() < 1e-8) dir.set(0, 0, -1); dir.normalize();
+    var mul = KIND_MUL[kind] != null ? KIND_MUL[kind] : 1;
+    if (s.armor && s.armor[kind] != null) mul *= s.armor[kind];
+    if (kind === 'shock' && s.id === 'volt_eel') mul = 0;
+    // head shots: the front third of the body
+    if (mul > 0 && s.move !== 'swarm' && s.move !== 'jelly') { tmpV.subVectors(point, c.pos); if (tmpV.dot(c.dir) > sc * 0.5 * 0.33) mul *= 1.4; }
+    var dmg = Math.max(0, (+amount || 0) * mul);
+    // every hit pushes the body a little (push and blunt much more)
+    var shove = (kind === 'push' ? 2.4 : kind === 'blunt' ? 1.0 : 0.35) * Math.min(1.5, (+amount || 0) / 10 + 0.3);
+    c.imp.addScaledVector(dir, shove / massK(c)); if (c.imp.lengthSq() > 36) c.imp.setLength(6);
+    if (c.dead) { bleedFx(c, point, 4, false); return { hp: 0, maxHp: c.maxHp, killed: false, dead: true }; }
+    c.lastHit = { kind: kind, weapon: o.weapon || null, t: time };
+    if (dmg <= 0) { reactHurt(c, 0, o, kind); return { hp: +c.hp.toFixed(1), maxHp: c.maxHp, killed: false }; }
+    c.hp = Math.max(0, c.hp - dmg); c.hurtT = 0.5;
+    bleedFx(c, point, dmg, true);
+    TU.emit('creature:hurt', { id: c.id, species: c.speciesId, speciesId: c.speciesId, hp: +c.hp.toFixed(1), maxHp: c.maxHp, pos: c.pos.clone(), point: point.clone(), amount: +dmg.toFixed(1), kind: kind, weapon: o.weapon || null });
+    if (c.hp <= 0) { kill(c, o, point); return { hp: 0, maxHp: c.maxHp, killed: true }; }
+    reactHurt(c, dmg, o, kind);
+    return { hp: +c.hp.toFixed(1), maxHp: c.maxHp, killed: false };
+  }
+  // What a hurt creature does. Predators answer through L.hurtHooks (return true to take over).
+  function reactHurt(c, dmg, o, kind) {
+    for (var k = 0; k < L.hurtHooks.length; k++) if (L.hurtHooks[k](c, dmg, o, kind) === true) return;
+    var s = c.sp, P = TU.player.state;
+    if (s.id === 'volt_eel') { c.enrage = 5; c.warn = Math.max(c.warn, 1.0); c.warned = false; c.cool = Math.min(c.cool, 0); return; } // it comes back crackling
+    if (s.id === 'entrance_crayfish') { c.warn = 2; c.cool = 0; c.snapT = 0.4; return; }
+    if (s.id === 'lanternjaw') { if (c.st === 'idle' && c.dist < 2.6) { c.st = 'lunge'; c.stT = 0; c.cool = 0; } else startFlee(c, 4); return; }
+    if (s.move === 'giant') return; // it barely notices
+    if (s.kind === 'flora') return;
+    startFlee(c, 4 + Math.random() * 2);
+    if (c.group) { c.group.flee = 4; c.group.members.forEach(function (m) { if (!m.dead) startFlee(m, 4); }); }
+    if (s.move === 'swarm') c.flash = 2;
+  }
+  // Death: twitch, go limp, then float belly up or sink. The body stays measurable (a "specimen").
+  function kill(c, o, point) {
+    if (c.dead) return;
+    var s = c.sp;
+    c.dead = true; c.deadT = 0; c.hp = 0; c.flee = 0; c.stun = 0; c.tell = 0; c.st = 'dead'; c.stT = 0;
+    c.killedBy = (o && (o.weapon || o.kind)) || 'unknown';
+    c.buoy = s.buoy != null ? s.buoy : s.move === 'crawl' ? 0 : s.move === 'eel' || s.move === 'giant' ? -0.05 : s.move === 'jelly' ? -0.015 : s.move === 'swarm' ? -0.03 : 0.045;
+    if (c.group) { var ms = c.group.members, k = ms.indexOf(c); if (k >= 0) ms.splice(k, 1); c.group = null; }
+    point = point || c.pos;
+    bleedFx(c, point, 26 + c.scale * 22, true);
+    goreBurst(c, point);
+    c.bleedT = Math.min(14, 4 + c.scale * 4);
+    for (var j = 0; j < L.killHooks.length; j++) L.killHooks[j](c, o);
+    TU.emit('creature:killed', { id: c.id, species: c.speciesId, speciesId: c.speciesId, pos: c.pos.clone(), by: c.killedBy, sizeM: c.sizeM });
+  }
+  function applyImpulse(c, dt) {
+    if (c.imp.x === 0 && c.imp.y === 0 && c.imp.z === 0) return;
+    if (c.sp.move === 'crawl' || c.surfaceUp) c.imp.addScaledVector(c.up, -c.imp.dot(c.up)); // crawlers slide along the rock
+    c.pos.addScaledVector(c.imp, dt);
+    c.imp.multiplyScalar(Math.exp(-dt * 2.5));
+    if (c.imp.lengthSq() < 1e-6) c.imp.set(0, 0, 0);
+  }
+  // Stunned: drift, twitch, no brain for a while.
+  function stunStep(c, i, dt) {
+    var s = c.sp;
+    c.stun -= dt; c.tell = 0;
+    c.vel.multiplyScalar(Math.exp(-dt * 1.5));
+    if (s.move !== 'crawl' && s.move !== 'still' && !c.surfaceUp) { c.vel.y -= 0.02 * dt; c.pos.addScaledVector(c.vel, dt); keepInWater(c, clamp(c.scale * 0.15, 0.04, 1), i); }
+    c.amp = lerp(c.amp, 0.1 + (Math.random() < 0.1 ? 1.2 : 0), 0.3); c.ph += dt * (Math.random() < 0.2 ? 18 : 1);
+    c.act = lerp(c.act, 0.25, 1 - Math.exp(-dt * 3));
+    c.glow = (s.glows ? 0.4 : 0) * (Math.random() < 0.3 ? 0.2 : 1);
+    if (c.stun <= 0) { c.stun = 0; if (!s.predator && s.kind === 'fauna') startFlee(c, 3); }
+  }
+  // The body after death. Common parts here; the movement is DEAD_MOVERS[move] or the default float or sink.
+  function deadStep(c, i, dt, P) {
+    var s = c.sp, t = (c.deadT += dt);
+    c.tell = 0; c.glow = lerp(c.glow, 0, 1 - Math.exp(-dt * 0.6));
+    if (c.bleedT > 0) { c.bleedT -= dt; if ((stepNo + i) % 24 === 0) bleedFx(c, c.pos, 2, false); }
+    if (t < 1.5) { var k = 1 - t / 1.5; c.amp = 0.4 + Math.random() * 1.6 * k; c.ph += dt * (6 + Math.random() * 26) * k; if (Math.random() < 0.12) c.act = Math.random(); }
+    else { c.amp = lerp(c.amp, 0.03, 1 - Math.exp(-dt * 1.5)); c.ph += dt * 0.4; c.act = lerp(c.act, s.deadJaw == null ? 0.35 : s.deadJaw, 1 - Math.exp(-dt * 1.2)); }
+    var dm = DEAD_MOVERS[s.move];
+    if (dm) dm(c, i, dt, P);
+    else if (s.move === 'crawl' || c.surfaceUp) {
+      // crawlers flip onto their back with a jerk and lie there
+      c.roll = lerp(c.roll, Math.PI, 1 - Math.exp(-dt * (t < 0.6 ? 0.5 : 3)));
+      snapToRock(c, i);
+    } else if (s.move === 'still') {
+      // nothing (flora cannot die)
+    } else {
+      c.vel.x *= Math.exp(-dt * 1.2); c.vel.z *= Math.exp(-dt * 1.2);
+      c.vel.y = lerp(c.vel.y, c.buoy, 1 - Math.exp(-dt * 0.6));
+      c.pos.addScaledVector(c.vel, dt);
+      var tr = c.buoy > 0 ? Math.PI : (c.rnd > 0.5 ? 1 : -1) * (1.25 + 0.35 * c.rnd);   // floaters go belly up, sinkers end on their side
+      c.roll = lerp(c.roll, tr, 1 - Math.exp(-dt * 0.7));
+      if (t < 1.5) c.roll += (Math.random() - 0.5) * 0.25;
+      if (c.buoy < 0 && s.move !== 'jelly' && s.move !== 'swarm') { tmpV.copy(c.dir); tmpV.y = lerp(tmpV.y, -0.3, 0.5); c.dir.lerp(tmpV.normalize(), 1 - Math.exp(-dt * 0.25)).normalize(); }
+      if (s.move === 'swarm') c.spread = lerp(c.spread || 1, 2.6, 1 - Math.exp(-dt * 0.3));
+      keepInWater(c, clamp(c.scale * 0.12, 0.03, 1.2), i);
+    }
+    // the body goes away after a while, when you are not looking
+    var keep = s.move === 'swarm' ? 25 : (s.despawn || 150);
+    if (t > keep && (stepNo + i) % 30 === 0) {
+      var cam = TU.camera; tmpV.subVectors(c.pos, cam.position); var dd = tmpV.length(); tmpV2.set(0, 0, -1).applyQuaternion(cam.quaternion);
+      if (dd > 18 || tmpV.dot(tmpV2) < 0.3 * dd || t > 420) removeRec(c);
+    }
+  }
+  function removeRec(c) { if (c.gone) return; c.gone = true; c.active = false; if (c.group) { var ms = c.group.members, k = ms.indexOf(c); if (k >= 0) ms.splice(k, 1); c.group = null; } anyGone = true; }
+  var anyGone = false;
+  function sweepGone() { if (!anyGone) return; anyGone = false; var j = 0; for (var i = 0; i < recs.length; i++) if (!recs[i].gone) recs[j++] = recs[i]; recs.length = j; }
+  function nearestCarcass(pos, r) { var best = null, bd = r * r; for (var i = 0; i < recs.length; i++) { var c = recs[i]; if (!c.dead || c.gone || c.sp.blood === 'none') continue; var d2 = c.pos.distanceToSquared(pos); if (d2 < bd) { bd = d2; best = c; } } return best; }
+  // Contract: push a creature. vec is the push in m/s given to a 1 m animal: small ones fly, big ones barely move.
+  function impulse(id, vec) {
+    var c = get(id); if (!c || c.gone || !vec) return false;
+    if (c.sp.kind === 'flora') return false;
+    c.imp.x += vec.x / massK(c); c.imp.y += vec.y / massK(c); c.imp.z += vec.z / massK(c);
+    if (c.imp.lengthSq() > 36) c.imp.setLength(6); // never faster than 6 m/s
+    return true;
+  }
+  // Contract: stun every living animal in a radius for up to `seconds` (less at the edge). Returns how many.
+  function stunArea(pos, radius, seconds) {
+    if (!pos) return 0;
+    var n = 0;
+    for (var i = 0; i < recs.length; i++) {
+      var c = recs[i]; if (c.gone || c.caught || c.dead || c.sp.kind === 'flora') continue;
+      var d = c.pos.distanceTo(pos); if (d > radius + c.scale * 0.3) continue;
+      var sec = (seconds || 3) * (1 - 0.5 * clamp(d / Math.max(radius, 0.01), 0, 1)) * (c.sp.stunK == null ? 1 : c.sp.stunK);
+      if (sec <= 0.05) continue;
+      c.stun = Math.max(c.stun, sec); c.tell = 0; n++;
+      for (var k = 0; k < L.hurtHooks.length; k++) L.hurtHooks[k](c, 0, { kind: 'stun', point: pos }, 'stun');
+    }
+    return n;
+  }
+  // Contract: creatures within a radius, nearest first. opts.hostile: only dangerous ones. Dead bodies and flora are left out.
+  function inRadius(pos, radius, opts) {
+    opts = opts || {}; var out = [];
+    if (!pos) return out;
+    for (var i = 0; i < recs.length; i++) {
+      var c = recs[i]; if (c.gone || c.caught || c.dead || c.sp.kind === 'flora') continue;
+      if (opts.hostile && !(c.sp.dangerous || c.sp.predator)) continue;
+      var d = c.pos.distanceTo(pos); if (d > radius + c.scale * 0.3) continue;
+      out.push({ id: c.id, species: c.speciesId, speciesId: c.speciesId, pos: c.pos.clone(), dist: +d.toFixed(2) });
+    }
+    out.sort(function (a, b) { return a.dist - b.dist; });
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Gore (small chunks that drift and sink) and clouds (ink, odd blood) */
+  /* ------------------------------------------------------------------ */
+  var GORE_N = 72, gore = null, CLOUD_N = 520, cloud = null;
+  function goreInit() {
+    var g = new T.IcosahedronGeometry(1, 0), pa = g.attributes.position;
+    for (var k = 0; k < pa.count; k++) { var f = 0.7 + 0.5 * L.hash3(pa.getX(k) * 3.1, pa.getY(k) * 2.7, pa.getZ(k) * 1.9); pa.setXYZ(k, pa.getX(k) * f, pa.getY(k) * f * 0.7, pa.getZ(k) * f); }
+    g.computeVertexNormals();
+    var mesh = new T.InstancedMesh(g, new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0 }), GORE_N);
+    mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.count = 0; mesh.frustumCulled = false; mesh.name = 'cr-gore';
+    mesh.instanceColor = new T.InstancedBufferAttribute(new Float32Array(GORE_N * 3).fill(1), 3);
+    mesh.layers.enable(SHOW_LAYER); TU.scene.add(mesh);
+    var it = []; for (k = 0; k < GORE_N; k++) it.push({ on: false, pos: new T.Vector3(), vel: new T.Vector3(), q: new T.Quaternion(), spin: new T.Vector3(), size: 0, age: 0, life: 0, rest: false, col: new T.Color(), hint: {} });
+    gore = { mesh: mesh, items: it, next: 0 };
+  }
+  var _gq = new T.Quaternion(), _ge = new T.Euler(), _gs = new T.Vector3();
+  function goreBurst(c, point) {
+    if (!gore || c.sp.blood === 'none' || c.sp.kind === 'flora') return;
+    var n = clamp(Math.round(Math.sqrt(c.scale) * 4 * (c.sp.goreK || 1)), 2, 10), b = c.sp.blood || 'red';
+    for (var k = 0; k < n; k++) {
+      var g = gore.items[gore.next]; gore.next = (gore.next + 1) % GORE_N;
+      g.on = true; g.rest = false; g.age = 0; g.life = 25 + Math.random() * 15;
+      g.pos.copy(point).add(tmpV.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(c.scale * 0.15));
+      g.vel.set(Math.random() - 0.5, Math.random() * 0.6 - 0.1, Math.random() - 0.5).multiplyScalar(0.8 + Math.random()).addScaledVector(c.lastHit ? _dv : Y, 0.3);
+      g.size = clamp(c.scale, 0.15, 3) * (0.018 + Math.random() * 0.03);
+      g.q.setFromEuler(_ge.set(Math.random() * 6, Math.random() * 6, Math.random() * 6)); g.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(6);
+      if (b === 'red') g.col.setHex(Math.random() < 0.3 ? 0xC9A090 : Math.random() < 0.5 ? 0x5A0C10 : 0x7E1C1E);
+      else if (b === 'blue') g.col.setHex(Math.random() < 0.5 ? (c.sp.colors[0] || 0x6A2436) : 0x9AB0D8);
+      else g.col.setHex(Math.random() < 0.6 ? (c.sp.colors[0] || 0xD8D0C0) : 0xBFB8A4);
+      g.col.convertSRGBToLinear();
+    }
+  }
+  function goreStep(dt) {
+    if (!gore) return;
+    for (var k = 0; k < GORE_N; k++) {
+      var g = gore.items[k]; if (!g.on) continue;
+      g.age += dt; if (g.age > g.life) { g.on = false; continue; }
+      if (g.rest) continue;
+      g.vel.multiplyScalar(Math.exp(-dt * 1.6)); g.vel.y -= 0.18 * dt; if (g.vel.y < -0.16) g.vel.y = -0.16;
+      g.pos.addScaledVector(g.vel, dt);
+      _gq.setFromEuler(_ge.set(g.spin.x * dt, g.spin.y * dt, g.spin.z * dt)); g.q.multiply(_gq); g.spin.multiplyScalar(Math.exp(-dt * 0.8));
+      if (((stepNo + k) % 6) === 0) { var h = TU.cave.collide(g.pos, g.size, { hint: g.hint }); if (h.hit) { g.pos.copy(h.pos); if (h.normal.y > 0.45) { g.rest = true; g.vel.set(0, 0, 0); } else g.vel.multiplyScalar(0.3); } }
+      if (g.age < 1.2 && ((stepNo + k) % 20) === 0 && TU.fx && TU.fx.spawnBlood && g.col.r > g.col.b * 2) TU.fx.spawnBlood(1, { pos: g.pos });
+    }
+  }
+  function goreDraw() {
+    if (!gore) return;
+    var n = 0, im = gore.mesh.instanceMatrix.array, ic = gore.mesh.instanceColor.array;
+    for (var k = 0; k < GORE_N; k++) {
+      var g = gore.items[k]; if (!g.on) continue;
+      var f = g.age > g.life - 3 ? (g.life - g.age) / 3 : 1;
+      m4.compose(g.pos, g.q, _gs.set(g.size * f, g.size * f, g.size * f)); m4.toArray(im, n * 16);
+      ic[n * 3] = g.col.r; ic[n * 3 + 1] = g.col.g; ic[n * 3 + 2] = g.col.b; n++;
+    }
+    gore.mesh.count = n; gore.mesh.visible = n > 0;
+    if (n) { gore.mesh.instanceMatrix.needsUpdate = true; gore.mesh.instanceColor.needsUpdate = true; }
+  }
+  // Soft cloud particles (normal blending, so dark clouds darken the view): ink, blue squid blood, milky crustacean fluid.
+  function cloudInit() {
+    var geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.BufferAttribute(new Float32Array(CLOUD_N * 3), 3).setUsage(T.DynamicDrawUsage));
+    geo.setAttribute('aSize', new T.BufferAttribute(new Float32Array(CLOUD_N), 1).setUsage(T.DynamicDrawUsage));
+    geo.setAttribute('aAlpha', new T.BufferAttribute(new Float32Array(CLOUD_N), 1).setUsage(T.DynamicDrawUsage));
+    geo.setAttribute('aCol', new T.BufferAttribute(new Float32Array(CLOUD_N * 3), 3).setUsage(T.DynamicDrawUsage));
+    var mat = new T.ShaderMaterial({
+      uniforms: { uScale: { value: 600 } }, transparent: true, depthWrite: false,
+      vertexShader: 'attribute float aSize; attribute float aAlpha; attribute vec3 aCol; uniform float uScale; varying float vA; varying vec3 vC;' +
+        'void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(aSize * uScale / max(0.05, -mv.z), 0.0, 420.0); vA = aAlpha; vC = aCol; }',
+      fragmentShader: 'varying float vA; varying vec3 vC; void main(){ vec2 q = gl_PointCoord - 0.5; float r = length(q) * 2.0; if (r > 1.0) discard; float a = vA * pow(1.0 - r, 1.6); gl_FragColor = vec4(vC, a); }'
+    });
+    var pts = new T.Points(geo, mat); pts.frustumCulled = false; pts.name = 'cr-clouds'; pts.renderOrder = 3; pts.layers.enable(SHOW_LAYER);
+    TU.scene.add(pts);
+    cloud = { pts: pts, x: new Float32Array(CLOUD_N * 3), v: new Float32Array(CLOUD_N * 3), age: new Float32Array(CLOUD_N), life: new Float32Array(CLOUD_N), s0: new Float32Array(CLOUD_N), s1: new Float32Array(CLOUD_N), a0: new Float32Array(CLOUD_N), col: new Float32Array(CLOUD_N * 3), ink: new Uint8Array(CLOUD_N), next: 0 };
+  }
+  // opts: { pos, col (hex), alpha, size: [start, end] m, speed m/s, spread m, life: [min, max] s, ink (counts toward blinding) }
+  var _cc = new T.Color();
+  function cloudSpawn(n, o) {
+    if (!cloud || !o || !o.pos) return;
+    _cc.setHex(o.col == null ? 0x0a0608 : o.col);
+    var sz = o.size || [0.1, 0.8], lf = o.life || [4, 8], sp2 = o.speed == null ? 0.3 : o.speed, spr = o.spread || 0.1;
+    for (var k = 0; k < n; k++) {
+      var i = cloud.next; cloud.next = (cloud.next + 1) % CLOUD_N;
+      var a = Math.random() * Math.PI * 2, e = Math.acos(2 * Math.random() - 1), sp3 = sp2 * (0.3 + Math.random() * 0.9);
+      cloud.x[i * 3] = o.pos.x + (Math.random() - 0.5) * spr; cloud.x[i * 3 + 1] = o.pos.y + (Math.random() - 0.5) * spr; cloud.x[i * 3 + 2] = o.pos.z + (Math.random() - 0.5) * spr;
+      cloud.v[i * 3] = Math.sin(e) * Math.cos(a) * sp3 + (o.vel ? o.vel.x : 0); cloud.v[i * 3 + 1] = Math.cos(e) * sp3 * 0.6 + (o.vel ? o.vel.y : 0); cloud.v[i * 3 + 2] = Math.sin(e) * Math.sin(a) * sp3 + (o.vel ? o.vel.z : 0);
+      cloud.age[i] = 0; cloud.life[i] = lf[0] + Math.random() * (lf[1] - lf[0]);
+      cloud.s0[i] = sz[0] * (0.6 + Math.random() * 0.8); cloud.s1[i] = sz[1] * (0.6 + Math.random() * 0.8);
+      cloud.a0[i] = (o.alpha == null ? 0.6 : o.alpha) * (0.6 + Math.random() * 0.4);
+      cloud.col[i * 3] = _cc.r; cloud.col[i * 3 + 1] = _cc.g; cloud.col[i * 3 + 2] = _cc.b; cloud.ink[i] = o.ink ? 1 : 0;
+    }
+  }
+  function cloudAlpha(i) { var t = cloud.age[i] / cloud.life[i]; return t >= 1 ? 0 : cloud.a0[i] * Math.min(1, cloud.age[i] * 4) * Math.pow(1 - t, 1.3); }
+  function cloudSize(i) { var t = cloud.age[i] / cloud.life[i]; return cloud.s0[i] + (cloud.s1[i] - cloud.s0[i]) * Math.sqrt(Math.min(1, t)); }
+  function cloudStep(dt) {
+    if (!cloud) return;
+    var x = cloud.x, v = cloud.v, f = Math.exp(-dt * 1.1);
+    for (var i = 0; i < CLOUD_N; i++) {
+      if (cloud.age[i] >= cloud.life[i]) continue;
+      cloud.age[i] += dt;
+      v[i * 3] *= f; v[i * 3 + 1] = v[i * 3 + 1] * f + 0.004 * dt; v[i * 3 + 2] *= f;
+      x[i * 3] += v[i * 3] * dt; x[i * 3 + 1] += v[i * 3 + 1] * dt; x[i * 3 + 2] += v[i * 3 + 2] * dt;
+    }
+  }
+  function cloudDraw() {
+    if (!cloud) return;
+    var ga = cloud.pts.geometry.attributes, cam = TU.camera, n = 0;
+    for (var i = 0; i < CLOUD_N; i++) {
+      var a = cloud.age[i] < cloud.life[i] ? cloudAlpha(i) : 0;
+      if (a <= 0.002) continue;
+      ga.position.array[n * 3] = cloud.x[i * 3]; ga.position.array[n * 3 + 1] = cloud.x[i * 3 + 1]; ga.position.array[n * 3 + 2] = cloud.x[i * 3 + 2];
+      ga.aSize.array[n] = cloudSize(i); ga.aAlpha.array[n] = a;
+      ga.aCol.array[n * 3] = cloud.col[i * 3]; ga.aCol.array[n * 3 + 1] = cloud.col[i * 3 + 1]; ga.aCol.array[n * 3 + 2] = cloud.col[i * 3 + 2]; n++;
+    }
+    cloud.pts.geometry.setDrawRange(0, n); cloud.pts.visible = n > 0;
+    if (n) { ga.position.needsUpdate = ga.aSize.needsUpdate = ga.aAlpha.needsUpdate = ga.aCol.needsUpdate = true; }
+    var hpx = (TU.renderer && TU.renderer.domElement && TU.renderer.domElement.height) || 600;
+    cloud.pts.material.uniforms.uScale.value = hpx * 0.5 / Math.tan((cam.fov || 70) * Math.PI / 360);
+  }
+  // How much ink is around a point (0 = clear, 1 or more = you cannot see).
+  function inkAt(pos) {
+    if (!cloud) return 0;
+    var sum = 0;
+    for (var i = 0; i < CLOUD_N; i++) {
+      if (!cloud.ink[i] || cloud.age[i] >= cloud.life[i]) continue;
+      var dx = cloud.x[i * 3] - pos.x, dy = cloud.x[i * 3 + 1] - pos.y, dz = cloud.x[i * 3 + 2] - pos.z, r = cloudSize(i) * 0.6 + 0.15;
+      var d2 = dx * dx + dy * dy + dz * dz; if (d2 > r * r) continue;
+      sum += cloudAlpha(i) * (1 - Math.sqrt(d2) / r);
+    }
+    return sum;
   }
 
   /* ------------------------------------------------------------------ */
@@ -794,7 +1261,8 @@
     return TU.cfg.debug && TU.cfg.debug.freeLantern ? 2 : 0; // cfg.debug.freeLantern: a 2-slot jar to try the feature without buying it
   }
   function catchCreature(id) {
-    var c = get(id); if (!c || c.caught || !c.active) return { ok: false, reason: 'gone' };
+    var c = get(id); if (!c || c.caught || !c.active || c.gone) return { ok: false, reason: 'gone' };
+    if (c.dead) return { ok: false, reason: 'dead', speciesId: c.speciesId };
     var s = c.sp, cam = TU.camera, d = (s.move === 'ambush' ? lurePos(c, tmpV3) : c.pos).distanceTo(cam.position);
     if (d > C.catchDist + c.scale * 0.3) return { ok: false, reason: 'too_far', speciesId: c.speciesId };
     if (s.move === 'ambush') { c.st = 'lunge'; c.stT = 0; c.cool = 0; return { ok: false, reason: 'bit', speciesId: c.speciesId }; }
@@ -833,8 +1301,8 @@
   }
   // Logbook bounty for one log result.
   function bountyFor(c, res, variantRes, photo) {
-    var r = c.sp.rarity, $ = 0;
-    if (res.first) $ += BOUNTY.species[r]; else if (res.record) $ += BOUNTY.record[r];
+    var r = c.sp.rarity, $ = 0, dm = 1 + 0.5 * (c.sp.danger || 0); // dangerous species pay more (danger 4 = x3)
+    if (res.first) $ += Math.round(BOUNTY.species[r] * dm); else if (res.record) $ += Math.round(BOUNTY.record[r] * dm);
     if (variantRes && variantRes.first) $ += c.shiny ? BOUNTY.species[r] * BOUNTY.shinyMul : BOUNTY.variant[r];
     if (photo && c.sp.dangerous && res.entry && res.entry.photos === 1) $ += BOUNTY.dangerPhoto;
     return $;
@@ -849,11 +1317,13 @@
     var c = get(id); if (!c) return null;
     c.measured = true;
     var size = tapeRead(c), depth = Math.max(0, -c.pos.y);
-    var res = TU.logbook.add({ speciesId: c.speciesId, sizeM: size, zone: c.zone, depthM: depth });
-    var vres = c.variant ? TU.logbook.add({ speciesId: c.speciesId + ':' + c.variant, sizeM: size, zone: c.zone, depthM: depth }) : null;
+    var res = TU.logbook.add({ speciesId: c.speciesId, sizeM: size, zone: c.zone, depthM: depth, specimen: c.dead });
+    var vres = c.variant ? TU.logbook.add({ speciesId: c.speciesId + ':' + c.variant, sizeM: size, zone: c.zone, depthM: depth, specimen: c.dead }) : null;
     markShiny(c, res, vres);
+    // a killed animal can still be measured: the logbook keeps a count of specimens (entry.specimens)
+    if (c.dead && !c.specimenLogged) { c.specimenLogged = true; [res, vres].forEach(function (r) { if (r && r.entry) r.entry.specimens = (r.entry.specimens || 0) + 1; }); TU.save.write(); }
     var $ = bountyFor(c, res, vres, false); earnings.logbook += $;
-    return { id: c.id, speciesId: c.speciesId, sizeM: size, first: res.first, record: res.record, variant: c.variant, variantFirst: !!(vres && vres.first), bounty: $ };
+    return { id: c.id, speciesId: c.speciesId, sizeM: size, first: res.first, record: res.record, variant: c.variant, variantFirst: !!(vres && vres.first), bounty: $, specimen: !!c.dead };
   }
   // Hold-to-measure helper for player.js: call every step with holding = T key down.
   // Returns { state: 'idle'|'aiming'|'measuring'|'done'|'lost', id, speciesId, progress 0..1, result, reason }.
@@ -916,7 +1386,7 @@
       return null;
     }
     if (!show || !show.group) { var keep = showcaseStore || showcaseBuild(); showcaseStore = keep; show = keep; }
-    show.group.visible = true; show.recs.length = 0; show.jaw = opts.jaw;
+    show.group.visible = true; show.recs.length = 0; show.jaw = opts.jaw; show.tell = opts.tell || 0; show.dead = !!opts.dead;
     if (show.camMask == null) { show.camMask = TU.camera.layers.mask; show.handCam = TU.fx.handCamera || null; show.handMask = show.handCam ? show.handCam.layers.mask : null; }
     TU.camera.layers.set(SHOW_LAYER);
     if (show.handCam) show.handCam.layers.set(SHOW_LAYER); // hide the diver's hands overlay too
@@ -938,9 +1408,11 @@
       if (list.length > 1 && s.move === 'giant') c.drawScale = 2.2;
       if (s.move === 'swarm') { c.swarmR = list.length > 1 ? 0.4 : 0.2; c.halo = 0.5; }
       c.dir.set(0.95, 0, 0.3).normalize(); c.up.copy(c.normal); c.spin = 0.4;
+      if (s.crawler) c.surfaceUp = true;
+      if (opts.facing) c.dir.copy(opts.facing).normalize();
       if (s.move === 'jelly') c.vel.set(0, 0, 0);
       if (s.move === 'swim' && s.upsideDown) c.dir.set(0.9, 0.0, 0.42).normalize();
-      if (list.length > 1) { var col = k % 6, row = Math.floor(k / 6); c.pos.x += (col - 2.5) * 1.35; c.pos.y += (1.5 - row) * 0.95; c.drawScale = Math.min(c.drawScale, 0.95); x = 8.1; }
+      if (list.length > 1) { var col = k % 7, row = Math.floor(k / 7); c.pos.x += (col - 3) * 1.2; c.pos.y += (1.5 - row) * 0.95; c.drawScale = Math.min(c.drawScale, 0.95); x = 8.1; }
       show.recs.push(c); out.push({ id: c.id, speciesId: sid, drawScale: c.drawScale });
     });
     show.list = list; show.multi = list.length > 1;
@@ -972,12 +1444,13 @@
     } else if (s.show.floor) { target.y += c.drawScale * 0.04; camPos = target.clone().add(new T.Vector3(0, dist * (s.show.low ? 0.22 : 0.5), dist * 0.97)); }
     else if (s.show.ceiling) { target.y -= c.drawScale * 0.35; camPos = target.clone().add(new T.Vector3(0, -dist * 0.12, dist)); }
     else if (s.show.swarm) { dist = c.swarmR * 3.2; camPos = target.clone().add(new T.Vector3(0, 0.02, dist)); }
+    else if (s.show.side) camPos = target.clone().add(new T.Vector3(s.show.side[0] * dist, s.show.side[1] * dist, s.show.side[2] * dist));
     else camPos = target.clone().add(new T.Vector3(0, dist * 0.12, dist));
     cam.position.copy(camPos); cam.lookAt(target); cam.updateMatrixWorld();
     // floor or ceiling slab for things that sit on rock
     var fl = show.floor, ce = show.ceil, needF = !show.multi && !!(s.show.floor || s.move === 'crawl'), needC = !show.multi && !!s.show.ceiling;
     fl.visible = needF; ce.visible = needC;
-    if (needF) { fl.scale.setScalar(ext * 3); fl.position.set(c.pos.x - SHOW_O.x, c.pos.y - SHOW_O.y - (s.move === 'crawl' ? c.drawScale * 0.14 : 0.002), c.pos.z - SHOW_O.z); }
+    if (needF) { fl.scale.setScalar(ext * 3); fl.position.set(c.pos.x - SHOW_O.x, c.pos.y - SHOW_O.y - (s.move === 'crawl' ? c.drawScale * 0.14 : s.crawler ? c.drawScale * (s.lift || 0.1) * (show.dead ? 0.55 : 1) : 0.002), c.pos.z - SHOW_O.z); }
     if (needC) { ce.scale.setScalar(ext * 3); ce.position.set(c.pos.x - SHOW_O.x, c.pos.y - SHOW_O.y + 0.004, c.pos.z - SHOW_O.z); }
     // a fake flashlight from the camera so the skin glow and translucency show
     show.lamp.pos.copy(camPos).add(new T.Vector3(0.3, 0.2, 0).multiplyScalar(dist * 0.2)); show.lamp.dir.subVectors(target, show.lamp.pos).normalize(); show.lamp.range = dist * 3;
@@ -1012,7 +1485,16 @@
   /* ------------------------------------------------------------------ */
   /* Public API and system hooks                                         */
   /* ------------------------------------------------------------------ */
+  // Internals shared with creatures-predators.js (not for other modules).
+  L.h = { recs: recs, groups: groups, SPECIES: SPECIES, IDS: IDS, C: C, get: get, makeRec: makeRec, addRec: addRec, removeRec: removeRec, findSpot: findSpot,
+    seek: seek, steer: steer, newWander: newWander, keepInWater: keepInWater, snapToRock: snapToRock, attack: attack, startFlee: startFlee, lampOn: lampOn,
+    lurePos: lurePos, kill: kill, damage: damage, bleedFx: bleedFx, cloud: cloudSpawn, inkAt: inkAt, checkSeen: checkSeen, pool: pool, massK: massK,
+    hitShape: function (c) { var r = hitShape(c); return { a: _ha.clone(), b: _hb.clone(), r: r }; },
+    time: function () { return time; }, stepNo: function () { return stepNo; }, SHOW_LAYER: SHOW_LAYER, show: function () { return show; } };
+
   TU.define('creatures', {
+    // endless mode: what the last cave:segment open / freed did ({ spawned, removed } creatures)
+    segmentStats: function () { return { spawned: segStats.spawned, removed: segStats.removed }; },
     species: SPECIES,
     list: function () { return recs; },
     spawnForZone: spawnForZone,
@@ -1038,7 +1520,15 @@
     debugSpawnInFront: debugSpawnInFront,
     debugPlace: debugPlace,
     debugIds: function () { return IDS.slice(); },
-    tuning: C
+    tuning: C,
+    // combat (the weapons call these; see CONTRACT-B-NOTES.md "Combat and predators")
+    raycastHit: raycastHit,
+    damage: damage,
+    impulse: impulse,
+    stunArea: stunArea,
+    inRadius: inRadius,
+    inkAt: inkAt,
+    debugKill: function (id, by) { var c = get(id); if (!c || c.dead || !c.maxHp) return false; return damage(id, c.hp + 1, { kind: 'pierce', weapon: by || 'debug' }).killed; }
   });
 
   TU.addSystem('creatures', {
@@ -1049,10 +1539,13 @@
         if (halo) { halo.name = 'cr-halos'; halo.layers.enable(SHOW_LAYER); }
       }
       for (var i = 0; i < C.lights; i++) { var l = new T.PointLight(0x7FE8FF, 0, 4, 2); l.name = 'cr-light'; l.layers.enable(SHOW_LAYER); TU.scene.add(l); lights.push(l); }
+      goreInit(); cloudInit();
       census(1);
     },
     reset: function (run) {
       lantern.items.length = 0; earnings.logbook = 0; earnings.finds = 0;
+      if (gore) gore.items.forEach(function (g) { g.on = false; });
+      if (cloud) for (var k = 0; k < CLOUD_N; k++) cloud.age[k] = cloud.life[k] = 0;
       census(run && run.seed != null ? run.seed : 1);
       activation(TU.player.state.pos);
     },

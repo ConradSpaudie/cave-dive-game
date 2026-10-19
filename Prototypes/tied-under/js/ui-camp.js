@@ -130,6 +130,19 @@
     '.ui-tarp .ui-chip{background:#0f2433;color:#E6EEF4;border-color:rgba(191,214,230,.3)}',
     '.ui-tarp .ui-chip.ui-sel{border-color:#4FF2D0;color:#4FF2D0}',
     '#ui-kit{font-size:13px;color:#cfe0ea;margin:14px 0 0;line-height:1.5}',
+    /* weapon cards on the tarp */
+    '.ui-wpns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}',
+    '.ui-wcard{position:relative;background:#0f2433;border:1px solid rgba(191,214,230,.25);color:#E6EEF4;border-radius:5px;padding:9px;cursor:pointer;text-align:left;font:inherit;font-size:12px;line-height:1.35;min-width:0;display:flex;flex-direction:column;gap:5px}',
+    '.ui-wcard b{display:block;font-family:var(--display);letter-spacing:.06em;font-size:14px}',
+    '.ui-wcard svg{width:100%;height:30px;display:block}',
+    '.ui-wcard .ui-meter{color:#9fb8c8;grid-template-columns:48px 1fr}',
+    '.ui-wcard .ui-meter s{background:rgba(255,255,255,.08)} .ui-wcard .ui-meter s u{background:#4FF2D0}',
+    '.ui-wcard small{color:#9fb8c8;font-size:11px}',
+    '.ui-wcard em{font-style:normal;font-family:var(--mono);font-size:11px;color:#FFC98A}',
+    '.ui-wcard.ui-sel{border-color:#4FF2D0;box-shadow:inset 0 0 0 1px #4FF2D0}',
+    '.ui-wcard.ui-locked{opacity:.62}',
+    '.ui-wcard.ui-locked b::after{content:" (locked)";font-family:var(--mono);font-weight:400;font-size:10px;letter-spacing:.1em;color:#FFC98A}',
+    '.ui-wknife{font-size:12px;color:#BFD6E6;margin:6px 0 0}',
     /* shop: price tags */
     '.ui-shop{display:grid;gap:8px}',
     '.ui-up{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;background:#13191b;border:1px solid rgba(255,201,138,.14);border-radius:4px;padding:10px 12px}',
@@ -191,6 +204,7 @@
     '  .ui-cp-nav button{padding:6px 8px;font-size:11px} .ui-cp-nav button i{display:none}',
     '  .ui-cp-say{bottom:calc(var(--gb) + 116px)} .ui-cp-say .ui-marv{display:none}',
     '  .ui-diffs,.ui-tanks,.ui-cons,.ui-plank{grid-template-columns:1fr}',
+    '  .ui-wpns{grid-template-columns:repeat(2,minmax(0,1fr))}',
     '  .ui-masks,.ui-tools,.ui-sumrow{grid-template-columns:repeat(2,minmax(0,1fr))}',
     '  .ui-tools{grid-template-columns:1fr}',
     '  .ui-item{grid-template-columns:minmax(0,1fr)} .ui-item svg{display:none}',
@@ -201,6 +215,9 @@
   /* Economy                                                             */
   /* ------------------------------------------------------------------ */
   var DEPTH_BONUS = [50, 150, 350, 700, 1200];
+  // Depth pay for zone z. Zones 5+ are the Beyond (endless segments): 1200 + 600 per zone past the Old Water.
+  function depthBonus(z) { return z < DEPTH_BONUS.length ? DEPTH_BONUS[Math.max(0, z)] : 1200 + 600 * (z - 4); }
+  function zoneLabel(z) { return z <= 4 ? U.ZONE_NAMES[z] : (TU.cave && typeof TU.cave.zoneName === 'function' ? TU.cave.zoneName(z) : 'The Beyond'); }
   function prevDeepZone(zones) { var z = -1; (zones || []).forEach(function (v, i) { if (v) z = i; }); return z; }
   function settle(s, log) {
     if (log.settled) return log.settled;
@@ -212,15 +229,16 @@
     }
     var mul = (DIFF[log.difficulty] ? DIFF[log.difficulty].mul : 1) * SOLO_MUL;
     var dead = !s.won && s.reason !== 'quit';
-    var z = U.zoneOfDepth(s.maxDepthM || 0);
+    // s.maxZone (from main.js) counts the Beyond zones (5+); older summaries only have the depth.
+    var z = typeof s.maxZone === 'number' ? s.maxZone : U.zoneOfDepth(s.maxDepthM || 0);
     // A KEEP DIVING leg only pays depth for zones deeper than where the leg started (the first leg paid the rest).
-    if (!log.continued) add('Depth bonus: ' + U.ZONE_NAMES[z], DEPTH_BONUS[z] * mul);
-    else if (z > (log.startZone || 0)) add('Deeper than the bottom: ' + U.ZONE_NAMES[z], (DEPTH_BONUS[z] - DEPTH_BONUS[log.startZone || 0]) * mul);
+    if (!log.continued) add('Depth bonus: ' + zoneLabel(z), depthBonus(z) * mul);
+    else if (z > (log.startZone || 0)) add('Deeper than the bottom: ' + zoneLabel(z), (depthBonus(z) - depthBonus(log.startZone || 0)) * mul);
     if (s.won && (s.reason === 'bottom' || s.reason === 'debug')) add('Reached the bottom', 1000 * mul);
     if (s.won && s.reason === 'endless') add('Came back from past the bottom', 300 * mul);
     // Logbook bounties for species new this dive (records pay a little too).
     var bounty = 0, recs = 0;
-    log.newSpecies.forEach(function (id) { var sp = K.species(id); bounty += K.BOUNTY[(sp && sp.rarity) || 'common'] || 25; });
+    log.newSpecies.forEach(function (id) { var sp = K.species(id); bounty += K.bountyOf ? K.bountyOf(sp) : (K.BOUNTY[(sp && sp.rarity) || 'common'] || 25); });
     log.logged.forEach(function (x) { if (x.record) recs += 5; });
     if (log.newSpecies.length) add(log.newSpecies.length + ' new species', bounty * mul);
     if (recs) add('Size records', recs * mul);
@@ -239,8 +257,9 @@
       ui.contracts.active = null;
     }
     // Fin Tokens: new zones, first bottom, every 5 species.
-    var pz = prevDeepZone(log.before.zones);
-    if (z > pz) add('First time in ' + (z - pz > 1 ? (z - pz) + ' new zones' : U.ZONE_NAMES[z]), 0, 2 * (z - pz));
+    // progress.zonesReached has 5 slots: the Beyond counts as the Old Water for Fin Tokens.
+    var pz = prevDeepZone(log.before.zones), fz = Math.min(z, 4);
+    if (fz > pz) add('First time in ' + (fz - pz > 1 ? (fz - pz) + ' new zones' : U.ZONE_NAMES[fz]), 0, 2 * (fz - pz));
     if (s.won && log.before.bottoms === 0 && (s.reason === 'bottom' || s.reason === 'debug')) add('First bottom ever', 0, 5);
     var bookNow = TU.logbook.count(), five = Math.floor(bookNow / 5) - Math.floor(log.before.book / 5);
     if (five > 0) add('Logbook milestone', 0, five);
@@ -262,7 +281,7 @@
     if (!ui.tutorialPaid) { ui.tutorialPaid = true; ui.kevin = true; K.pay(150, 0); return true; }
     K.write(); return false;
   };
-  K.econ = { settle: settle, DEPTH_BONUS: DEPTH_BONUS, SOLO_MUL: SOLO_MUL };
+  K.econ = { settle: settle, DEPTH_BONUS: DEPTH_BONUS, depthBonus: depthBonus, SOLO_MUL: SOLO_MUL };
 
   /* ------------------------------------------------------------------ */
   /* Contracts                                                           */
@@ -359,6 +378,50 @@
   /* ------------------------------------------------------------------ */
   /* Panels                                                              */
   /* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
+  /* Weapons (weapons.js holds the rules; this is the camp side)         */
+  /* ------------------------------------------------------------------ */
+  // Small side-on drawings for the weapon cards (SVG paths in a 120 x 30 box).
+  var WPN_ART = {
+    knife: '<path d="M14 15h34l26-4 8 4-8 3H48z" fill="#c9d0d4"/><rect x="2" y="12" width="14" height="7" rx="2" fill="#1b1d1f"/><rect x="15" y="10" width="3" height="11" fill="#444"/>',
+    polespear: '<rect x="2" y="14" width="100" height="2.4" rx="1" fill="#2a2f33"/><path d="M102 13l14-2v2l-12 2zM102 15.2h15v1h-15zM102 17l14 2v2l-14-3z" fill="#c9d0d4"/><path d="M2 15c6-6 18-6 24 0" stroke="#c2481e" stroke-width="2" fill="none"/>',
+    speargun: '<rect x="10" y="9" width="70" height="7" rx="3" fill="#3a4246"/><rect x="80" y="11.5" width="36" height="2" fill="#c9d0d4"/><path d="M28 16h10l-3 12h-8z" fill="#151719"/><circle cx="52" cy="19" r="4" fill="#ddd" stroke="#222"/>',
+    jet: '<rect x="30" y="6" width="34" height="8" rx="4" fill="#9aa1a6"/><rect x="26" y="12" width="44" height="9" rx="3" fill="#d8a51c"/><path d="M70 14h18l6-2v6l-6-2H70z" fill="#a07c3a"/><path d="M34 21h9l-3 9h-8z" fill="#151719"/><path d="M28 18c-10 2-16 6-20 12" stroke="#0d0f10" stroke-width="3" fill="none"/>',
+    bangstick: '<rect x="2" y="13.5" width="84" height="3.4" rx="1" fill="#454c50"/><rect x="84" y="11" width="20" height="8" rx="2" fill="#b3bbc0"/><rect x="104" y="12.5" width="8" height="5" fill="#a07c3a"/><rect x="92" y="19" width="3" height="7" fill="#b3261e"/>',
+    flare: '<rect x="40" y="8" width="46" height="9" rx="4" fill="#e0601a"/><path d="M40 15h14l-4 14h-10z" fill="#e0601a"/><rect x="34" y="8" width="8" height="7" rx="2" fill="#c0501a"/><circle cx="88" cy="12.5" r="3" fill="#2a1a10"/>',
+    baton: '<rect x="4" y="12" width="30" height="7" rx="3" fill="#1b1d1f"/><rect x="34" y="12.5" width="4" height="6" fill="#7fd8ff"/><rect x="38" y="13" width="62" height="5" rx="2" fill="#2a2f33"/><path d="M100 13l10-1M100 18l10 1" stroke="#c9d0d4" stroke-width="2"/><path d="M110 11l3 3-3 2 3 3" stroke="#bfeaff" stroke-width="1" fill="none"/>'
+  };
+  function wpnApi() { return TU.weapons && typeof TU.weapons.list === 'function' && TU.weapons.list().length ? TU.weapons : null; }
+  function weaponCards() {
+    var Wp = wpnApi(); if (!Wp) return '<p class="ui-wknife">Weapons are not available right now.</p>';
+    var sel = Wp.selected(), stock = Wp.stock();
+    function m(lbl, v) { return '<span>' + lbl + '</span><s><u style="width:' + Math.round(clamp(v, 0, 1) * 100) + '%"></u></s>'; }
+    return '<div class="ui-wpns" role="radiogroup" aria-label="Primary weapon">' + Wp.list().filter(function (w) { return w.primary; }).map(function (w) {
+      var ak = w.ammoKey, have = ak ? stock[ak] : null;
+      var ammo = ak ? (have + ' ' + Wp.ammoName(ak) + ' in stock') : w.ammo;
+      return '<button class="ui-wcard' + (w.id === sel ? ' ui-sel' : '') + (w.owned ? '' : ' ui-locked') + '" data-wpn="' + w.id + '" role="radio" aria-checked="' + (w.id === sel) + '">' +
+        '<b>' + K.esc(w.name) + '</b><svg viewBox="0 0 120 30" aria-hidden="true">' + (WPN_ART[w.id] || '') + '</svg>' +
+        '<div class="ui-meter">' + m('DMG ' + w.damage, w.damage / 100) + m('RANGE ' + (+w.range).toFixed(1) + 'm', w.range / 12) + m('RELOAD ' + (+w.reload).toFixed(1) + 's', 1 - w.reload / 4) + '</div>' +
+        '<small>' + K.esc(ammo) + '</small><small>' + K.esc(w.special) + '</small>' +
+        (w.owned ? '' : '<em>' + K.money(w.cost) + ' at the Gear Tent</em>') + '</button>';
+    }).join('') + '</div><p class="ui-wknife">Plus the dive knife, always on your belt (5 swaps to it).</p>';
+  }
+  function weaponShop(cash) {
+    var Wp = wpnApi(); if (!Wp) return '';
+    var stock = Wp.stock();
+    var rows = Wp.list().filter(function (w) { return w.primary && w.cost > 0; }).map(function (w) {
+      return '<div class="ui-up"><div><h5>' + K.esc(w.name) + (w.owned ? ' · OWNED' : '') + '</h5><p>' + K.esc(w.blurb) + ' <span style="color:#FFC98A">DMG ' + w.damage + ', range ' + (+w.range).toFixed(1) + ' m, reload ' + (+w.reload).toFixed(1) + ' s.</span></p></div>' +
+        (w.owned ? '<button class="ui-tag ui-max" disabled>OWNED</button>' : '<button class="ui-tag" data-wbuy="' + w.id + '"' + (cash < w.cost ? ' disabled' : '') + '>Buy ' + K.money(w.cost) + '</button>') + '</div>';
+    }).join('');
+    var ammo = Wp.list().filter(function (w) { return w.pack; }).map(function (w) {
+      var k = w.ammoKey;
+      return '<div class="ui-con"><b>' + K.esc(Wp.ammoName(k).replace(/^./, function (c) { return c.toUpperCase(); })) + '</b>+' + w.pack[1] + ' for the ' + K.esc(w.name.toLowerCase()) + ' · have ' + stock[k] + ' · carry ' + w.pack[2] +
+        '<button class="ui-tag" data-wammo="' + w.id + '"' + (cash < w.pack[0] || !w.owned ? ' disabled' : '') + '>' + (w.owned ? K.money(w.pack[0]) : 'Need the gun') + '</button></div>';
+    }).join('');
+    return '<h4 style="font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.24em;color:#FFC98A;margin:16px 0 6px">WEAPONS</h4><div class="ui-shop">' + rows + '</div>' +
+      '<h4 style="font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.24em;color:#FFC98A;margin:16px 0 6px">AMMO</h4><div class="ui-cons">' + ammo + '</div>';
+  }
+  var WPN_LINES = { speargun: 'A speargun. Aim it at fish, not at me.', jet: 'It runs on your tank. Every blast is air you do not breathe. Think about that.', bangstick: 'A bang stick. Hold the pointy end away from your face. Both ends, really.', flare: 'Flares. Light, fire and fear, all in one. My kind of product.', baton: 'The shock baton. It also eats your flashlight battery, so do not zap for fun.' };
   function loadoutSummary() {
     var L = TU.save.data.loadout, lo = cfg.loadouts[L.tank] || cfg.loadouts.standard, mins = (TU.progress.value('tank', 'airMinutes') || 10) * lo.tanks;
     var mask = MASKS.filter(function (m) { return m.id === (L.mask || 'standard'); })[0] || MASKS[0];
@@ -369,6 +432,7 @@
     if (L.lantern && TU.progress.level('lantern') > 0) tools.push('lantern');
     if (L.measuringTape) tools.push('measuring tape');
     if (L.camera) tools.push('camera');
+    var Wp = wpnApi(); if (Wp) { var wd = Wp.defs[Wp.selected()]; if (wd) tools.unshift(wd.name.toLowerCase() + ' + knife'); }
     return { mins: mins, text: '<b>' + lo.label + '</b> (' + lo.tanks + ' tank' + (lo.tanks > 1 ? 's' : '') + ', about ' + mins + ' min of calm air) · ' + mask.label + ' mask · ' + fin.label + '<br>' + tools.join(', ') };
   }
   var PANELS = {
@@ -423,6 +487,7 @@
         toggle('lantern', 'Lantern', lanLv ? lanLv * 2 + ' creature slots' : 'Buy it at the Gear Tent', !lanLv) +
         toggle('measuringTape', 'Measuring tape', 'Measure and log creatures') + toggle('camera', 'Camera', 'Photos for the logbook') + '</div>' +
         '<h4>FLIPPERS</h4><div class="ui-fins">' + FINS.map(function (f) { return '<button class="ui-chip' + (ui.locker.fins.preset === f.id ? ' ui-sel' : '') + '" data-fin="' + f.id + '" title="' + K.esc(f.desc) + '">' + f.label + '</button>'; }).join('') + '</div>' +
+        '<h4>WEAPON</h4>' + weaponCards() +
         '<p id="ui-kit"></p></div>' +
         '<div class="ui-go" style="margin-top:14px"><button class="ui-btn" id="ui-btn-lo-start">Dive</button><button class="ui-btn ui-ghost" id="ui-btn-tolocker">Tune flippers in the Locker</button></div>';
       function syncTanks() {
@@ -440,6 +505,13 @@
       });
       Array.prototype.forEach.call(el.querySelectorAll('[data-tog]'), function (c) { c.onchange = function () { TU.save.set('loadout.' + c.getAttribute('data-tog'), c.checked); syncTanks(); }; });
       Array.prototype.forEach.call(el.querySelectorAll('[data-fin]'), function (b) { b.onclick = function () { setFin(b.getAttribute('data-fin')); renderPanel(); }; });
+      Array.prototype.forEach.call(el.querySelectorAll('[data-wpn]'), function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-wpn'), Wp = wpnApi(); if (!Wp) return;
+          if (!Wp.owned(id)) { say('That one costs money. ' + K.money(Wp.stats(id).cost) + ' at the tent.'); return; }
+          Wp.select(id); say(id === 'polespear' ? 'The pole spear. Cheap, quiet, never jams. Like me.' : WPN_LINES[id] || K.pick(K.MARV.buy)); renderPanel();
+        };
+      });
       $('ui-btn-lo-start').onclick = dive;
       $('ui-btn-tolocker').onclick = function () { select('locker'); };
       syncTanks();
@@ -470,7 +542,22 @@
       var CON = [['tape', 'Duct tape roll', '+3 patches', 20, 3], ['flexTape', 'Flex Tape', '+1 big seal', 45, 1], ['glowSticks', 'Glow sticks', '+4 sticks', 15, 4]];
       el.innerHTML = head('shop', 'Marv\'s gear tent', 'Tanks, hoses, a cooler that is definitely not for bait. Upgrades are yours forever. Consumables get used up.') +
         '<div class="ui-shop">' + rows + '</div><h4 style="font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.24em;color:#FFC98A;margin:16px 0 6px">CONSUMABLES</h4><div class="ui-cons">' +
-        CON.map(function (c) { return '<div class="ui-con"><b>' + c[1] + '</b>' + c[2] + ' · have ' + K.data().stock[c[0]] + '<button class="ui-tag" data-con="' + c[0] + '" data-cost="' + c[3] + '" data-n="' + c[4] + '"' + (cash < c[3] ? ' disabled' : '') + '>' + K.money(c[3]) + '</button></div>'; }).join('') + '</div>';
+        CON.map(function (c) { return '<div class="ui-con"><b>' + c[1] + '</b>' + c[2] + ' · have ' + K.data().stock[c[0]] + '<button class="ui-tag" data-con="' + c[0] + '" data-cost="' + c[3] + '" data-n="' + c[4] + '"' + (cash < c[3] ? ' disabled' : '') + '>' + K.money(c[3]) + '</button></div>'; }).join('') + '</div>' + weaponShop(cash);
+      Array.prototype.forEach.call(el.querySelectorAll('[data-wbuy]'), function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-wbuy'), r = TU.weapons.buy(id);
+          if (!r.ok) { say(r.reason === 'broke' ? K.pick(K.MARV.broke) : 'You already have one. One is plenty.'); return; }
+          TU.weapons.select(id); K.emit('money', {}); K.sfx('chime');
+          say(WPN_LINES[id] || K.pick(K.MARV.buy)); renderPanel();
+        };
+      });
+      Array.prototype.forEach.call(el.querySelectorAll('[data-wammo]'), function (b) {
+        b.onclick = function () {
+          var r = TU.weapons.buyAmmo(b.getAttribute('data-wammo'));
+          if (!r.ok) { say(K.pick(K.MARV.broke)); return; }
+          K.emit('money', {}); say('More ' + TU.weapons.ammoName(r.key) + '. Try to bring some back this time.'); renderPanel();
+        };
+      });
       Array.prototype.forEach.call(el.querySelectorAll('[data-buy]'), function (b) { b.onclick = function () { buyUpgrade(b.getAttribute('data-buy')); }; });
       Array.prototype.forEach.call(el.querySelectorAll('[data-con]'), function (b) {
         b.onclick = function () {

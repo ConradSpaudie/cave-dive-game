@@ -34,11 +34,24 @@
   var DW = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0], [0, 1, 0], [0, -1, 0]]; // dir -> world vector
   var DX = [0, 1, 0, -1, 0, 0], DY = [1, 0, -1, 0, 0, 0], DD = [0, 0, 0, 0, -1, 1];
 
-  function key(x, y, d) { return ((x + 512) * 1024 + (y + 512)) * 256 + (d + 16); }
+  // Cell key. Depth layers 0..239 use the original packing (so the first cave looks exactly as it
+  // always did); deeper layers (endless mode keeps adding cave below) add a high part on top.
+  var DHI = 268435456; // 2^28: room for (x, y, 256 depth layers) below it
+  function key(x, y, d) { var dd = d + 16, hi = Math.floor(dd / 256); return hi * DHI + ((x + 512) * 1024 + (y + 512)) * 256 + (dd - hi * 256); }
+  // Key back to [x, y, d].
+  function decode(k) {
+    var hi = Math.floor(k / DHI), r = k - hi * DHI, lo = r % 256, r2 = (r - lo) / 256, y = (r2 % 1024) - 512, x = (r2 - (y + 512)) / 1024 - 512;
+    return [x, y, hi * 256 + lo - 16];
+  }
   function cellCenter(x, y, d) { return [(x + 0.5) * CELL, -(d + 0.5) * CELL, -(y + 0.5) * CELL]; }
 
   // Seeded hash of integers -> [0, 1). Same inputs and cave seed, same number.
   var SEED = 0;
+  // Same hash with an explicit seed value (each endless segment keeps its own, see extend()).
+  function hfS(sv, a, b, c, s) {
+    var z = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663) ^ Math.imul(c | 0, 83492791) ^ Math.imul((s | 0) + 1, 0x27d4eb2d) ^ sv) >>> 0;
+    return TU.mix32(z) / 4294967296;
+  }
   function hf(a, b, c, s) {
     var z = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663) ^ Math.imul(c | 0, 83492791) ^ Math.imul((s | 0) + 1, 0x27d4eb2d) ^ SEED) >>> 0;
     return TU.mix32(z) / 4294967296;
@@ -160,98 +173,193 @@
     return { r: [j(2.1, 1), j(1.85, 2), j(1.4, 3)], fl: 0.6, flv: 0.78 };
   }
 
+  // A cave piece from a generator piece. off = [dx, dy, dd] grid shift, idBase added to ids (endless segments).
+  function makePiece(gp, i, off, idBase) {
+    off = off || [0, 0, 0]; idBase = idBase || 0;
+    return {
+      id: gp.id + idBase, idx: i, gp: gp, type: gp.type, role: gp.role, branch: gp.branch, zone: gp.zone, variant: gp.variant || 0,
+      room: gp.shape === 'room', x: gp.x + off[0], y: gp.y + off[1], d: gp.d + off[2], w: gp.w, l: gp.l, h: gp.h,
+      start: !!gp.start, bottom: !!gp.bottom, dry: !!gp.dry, treasure: !!gp.treasure, collapse: !!gp.collapse,
+      landmarkId: gp.landmarkId == null ? -1 : gp.landmarkId, sockets: gp.sockets, ports: [], cells: [],
+      groups: [], post: [], rocks: [], floorH: null, waterY: null, amp: 1, ampRoom: 1, k: 1.3, node: null, segs: [],
+      openFaces: new Set(), extendedUp: 0, seedV: SEED, seg: 0
+    };
+  }
+  function occupy(G, P2, x, y, d) { var k = key(x, y, d); G.cellMap.set(k, P2.idx); P2.cells.push([x, y, d]); }
+  // World box, center and the open faces between cells of the same piece.
+  function finishPiece(G, P2) {
+    P2.box = { x0: P2.x * CELL, x1: (P2.x + P2.w) * CELL, y0: -(P2.d + P2.h) * CELL, y1: -P2.d * CELL, z0: -(P2.y + P2.l) * CELL, z1: -P2.y * CELL };
+    P2.center = [(P2.box.x0 + P2.box.x1) / 2, (P2.box.y0 + P2.box.y1) / 2, (P2.box.z0 + P2.box.z1) / 2];
+    P2.cells.forEach(function (c) {
+      for (var dir = 0; dir < 6; dir++) {
+        var nk = key(c[0] + DX[dir], c[1] + DY[dir], c[2] + DD[dir]);
+        if (G.cellMap.get(nk) === P2.idx) P2.openFaces.add(key(c[0], c[1], c[2]) * 8 + dir);
+      }
+      if (P2.sky && c[2] === P2.d) P2.openFaces.add(key(c[0], c[1], c[2]) * 8 + 4); // open to the sky
+    });
+  }
+  // One port per generator edge (the hole between two pieces). e = [aId, bId, x, y, d, dir].
+  function addEdge(G, e) {
+    var byId = G.byId;
+    var A = byId[e[0]], B = byId[e[1]], x = e[2], y = e[3], d = e[4], dir = e[5];
+    var c = cellCenter(x, y, d), w = DW[dir];
+    var face = [c[0] + w[0] * CELL / 2, c[1] + w[1] * CELL / 2, c[2] + w[2] * CELL / 2];
+    // canonical face id so both sides agree on jitter and size
+    var nx = x + DX[dir], ny = y + DY[dir], nd = d + DD[dir];
+    var ca = key(x, y, d), cb = key(nx, ny, nd), fk = Math.min(ca, cb) * 8 + (dir < 4 ? dir & 1 : 4);
+    var vertical = dir >= 4;
+    var j1 = hs(fk, 1, 0, 11), j2 = hs(fk, 2, 0, 11), j3 = hf(fk, 3, 0, 11), j4 = hf(fk, 4, 0, 11), j5 = hf(fk, 5, 0, 11);
+    var pos, hz, prof;
+    if (vertical) {
+      pos = [face[0] + j1 * 0.75, face[1], face[2] + j2 * 0.75];
+      var ang = hf(fk, 6, 0, 11) * Math.PI;
+      hz = [Math.cos(ang), 0, Math.sin(ang)];
+      var rr = 1.75 + 0.45 * j3;
+      prof = { r: [rr, rr * (0.92 + 0.08 * j4), rr * (0.92 + 0.08 * j4)], fl: 0, flv: 0.8 };
+    } else {
+      var lat = [-w[2], 0, w[0]]; // horizontal perpendicular to the face normal
+      pos = [face[0] + lat[0] * j1 * 0.7, face[1] + j2 * 0.6, face[2] + lat[2] * j1 * 0.7];
+      hz = [lat[0], 0, lat[2]];
+      prof = { r: [1.6 + 0.55 * j3, 1.5 + 0.45 * j4, 1.15 + 0.4 * j5], fl: 0.45 + 0.35 * hf(fk, 7, 0, 11), flv: 0.8 };
+    }
+    var port = { idx: G.ports.length, fk: fk, a: A.idx, b: B.idx, pos: pos, t: w.slice(), vertical: vertical, hz: hz, prof: prof, cellA: [x, y, d], dir: dir };
+    G.ports.push(port);
+    A.ports.push(port); B.ports.push(port);
+    A.openFaces.add(ca * 8 + dir); B.openFaces.add(cb * 8 + (dir < 4 ? (dir + 2) & 3 : (dir === 4 ? 5 : 4)));
+    var ek = Math.min(A.idx, B.idx) + '|' + Math.max(A.idx, B.idx);
+    if (!G.edgeMap.has(ek)) G.edgeMap.set(ek, port);
+    return port;
+  }
+
   function create(layout) {
     SEED = TU.mix32((layout.seed >>> 0) ^ 0x51AB3C) >>> 0;
     var G = {
-      layout: layout, seed: layout.seed >>> 0, pieces: [], cellMap: new Map(), blocks: new Map(), ports: [], portMap: new Map(),
+      layout: layout, seed: layout.seed >>> 0, seedV: SEED, pieces: [], cellMap: new Map(), blocks: new Map(), ports: [], portMap: new Map(),
       edgeMap: new Map(), paths: [], pathById: {}, entrance: null, bottom: null, skyCells: new Set(), version: 0
     };
-    var gpieces = layout.pieces, i, P;
+    var gpieces = layout.pieces, i;
     /* ---- pieces and occupancy ---- */
-    for (i = 0; i < gpieces.length; i++) {
-      var gp = gpieces[i];
-      P = {
-        id: gp.id, idx: i, gp: gp, type: gp.type, role: gp.role, branch: gp.branch, zone: gp.zone, variant: gp.variant || 0,
-        room: gp.shape === 'room', x: gp.x, y: gp.y, d: gp.d, w: gp.w, l: gp.l, h: gp.h,
-        start: !!gp.start, bottom: !!gp.bottom, dry: !!gp.dry, treasure: !!gp.treasure, collapse: !!gp.collapse,
-        landmarkId: gp.landmarkId == null ? -1 : gp.landmarkId, sockets: gp.sockets, ports: [], cells: [],
-        groups: [], post: [], rocks: [], floorH: null, waterY: null, amp: 1, ampRoom: 1, k: 1.3, node: null, segs: [],
-        openFaces: new Set(), extendedUp: 0
-      };
-      G.pieces.push(P);
-    }
-    function occupy(P2, x, y, d) { var k = key(x, y, d); G.cellMap.set(k, P2.idx); P2.cells.push([x, y, d]); }
-    G.pieces.forEach(function (P2) { for (var dd = 0; dd < P2.h; dd++) for (var yy = 0; yy < P2.l; yy++) for (var xx = 0; xx < P2.w; xx++) occupy(P2, P2.x + xx, P2.y + yy, P2.d + dd); });
+    for (i = 0; i < gpieces.length; i++) G.pieces.push(makePiece(gpieces[i], i));
+    G.pieces.forEach(function (P2) { for (var dd = 0; dd < P2.h; dd++) for (var yy = 0; yy < P2.l; yy++) for (var xx = 0; xx < P2.w; xx++) occupy(G, P2, P2.x + xx, P2.y + yy, P2.d + dd); });
     // Dry chambers grow up into free rock above them (if every cell above is free), so there is
     // headroom for a ledge to fall from.
-    G.pieces.forEach(function (P2) {
-      if (!P2.dry || !P2.room || P2.d < 1) return;
-      var free = true, xx, yy;
-      for (yy = -1; yy <= P2.l && free; yy++) for (xx = -1; xx <= P2.w && free; xx++) {
-        var inside = xx >= 0 && xx < P2.w && yy >= 0 && yy < P2.l;
-        if (inside && G.cellMap.has(key(P2.x + xx, P2.y + yy, P2.d - 1))) free = false;
-      }
-      if (!free) return;
-      for (yy = 0; yy < P2.l; yy++) for (xx = 0; xx < P2.w; xx++) occupy(P2, P2.x + xx, P2.y + yy, P2.d - 1);
-      P2.d -= 1; P2.h += 1; P2.extendedUp = 1;
-    });
+    G.pieces.forEach(function (P2) { growDry(G, P2); });
     // The entrance pool is open to the sky: add a layer of cells above it (d = -1).
     G.pieces.forEach(function (P2) {
       if (!P2.start) return;
-      for (var yy = 0; yy < P2.l; yy++) for (var xx = 0; xx < P2.w; xx++) { occupy(P2, P2.x + xx, P2.y + yy, P2.d - 1); G.skyCells.add((P2.x + xx) + ',' + (P2.y + yy)); }
+      for (var yy = 0; yy < P2.l; yy++) for (var xx = 0; xx < P2.w; xx++) { occupy(G, P2, P2.x + xx, P2.y + yy, P2.d - 1); G.skyCells.add((P2.x + xx) + ',' + (P2.y + yy)); }
       P2.d -= 1; P2.h += 1; P2.sky = true; G.entrance = P2;
     });
-    G.pieces.forEach(function (P2) {
-      if (P2.bottom) G.bottom = P2;
-      // world box (min/max)
-      P2.box = { x0: P2.x * CELL, x1: (P2.x + P2.w) * CELL, y0: -(P2.d + P2.h) * CELL, y1: -P2.d * CELL, z0: -(P2.y + P2.l) * CELL, z1: -P2.y * CELL };
-      P2.center = [(P2.box.x0 + P2.box.x1) / 2, (P2.box.y0 + P2.box.y1) / 2, (P2.box.z0 + P2.box.z1) / 2];
-      // faces between cells of the same piece are open
-      P2.cells.forEach(function (c) {
-        for (var dir = 0; dir < 6; dir++) {
-          var nk = key(c[0] + DX[dir], c[1] + DY[dir], c[2] + DD[dir]);
-          if (G.cellMap.get(nk) === P2.idx) P2.openFaces.add(key(c[0], c[1], c[2]) * 8 + dir);
-        }
-        if (P2.sky && c[2] === P2.d) P2.openFaces.add(key(c[0], c[1], c[2]) * 8 + 4); // open to the sky
-      });
-    });
+    G.pieces.forEach(function (P2) { if (P2.bottom) G.bottom = P2; finishPiece(G, P2); });
     var byId = {}; G.pieces.forEach(function (P2) { byId[P2.id] = P2; }); G.byId = byId;
 
     /* ---- ports: one per generator edge (the hole between two pieces) ---- */
-    layout.edges.forEach(function (e) {
-      var A = byId[e[0]], B = byId[e[1]], x = e[2], y = e[3], d = e[4], dir = e[5];
-      var c = cellCenter(x, y, d), w = DW[dir];
-      var face = [c[0] + w[0] * CELL / 2, c[1] + w[1] * CELL / 2, c[2] + w[2] * CELL / 2];
-      // canonical face id so both sides agree on jitter and size
-      var nx = x + DX[dir], ny = y + DY[dir], nd = d + DD[dir];
-      var ca = key(x, y, d), cb = key(nx, ny, nd), fk = Math.min(ca, cb) * 8 + (dir < 4 ? dir & 1 : 4);
-      var vertical = dir >= 4;
-      var j1 = hs(fk, 1, 0, 11), j2 = hs(fk, 2, 0, 11), j3 = hf(fk, 3, 0, 11), j4 = hf(fk, 4, 0, 11), j5 = hf(fk, 5, 0, 11);
-      var pos, hz, prof;
-      if (vertical) {
-        pos = [face[0] + j1 * 0.75, face[1], face[2] + j2 * 0.75];
-        var ang = hf(fk, 6, 0, 11) * Math.PI;
-        hz = [Math.cos(ang), 0, Math.sin(ang)];
-        var rr = 1.75 + 0.45 * j3;
-        prof = { r: [rr, rr * (0.92 + 0.08 * j4), rr * (0.92 + 0.08 * j4)], fl: 0, flv: 0.8 };
-      } else {
-        var lat = [-w[2], 0, w[0]]; // horizontal perpendicular to the face normal
-        pos = [face[0] + lat[0] * j1 * 0.7, face[1] + j2 * 0.6, face[2] + lat[2] * j1 * 0.7];
-        hz = [lat[0], 0, lat[2]];
-        prof = { r: [1.6 + 0.55 * j3, 1.5 + 0.45 * j4, 1.15 + 0.4 * j5], fl: 0.45 + 0.35 * hf(fk, 7, 0, 11), flv: 0.8 };
-      }
-      var port = { idx: G.ports.length, fk: fk, a: A.idx, b: B.idx, pos: pos, t: w.slice(), vertical: vertical, hz: hz, prof: prof, cellA: [x, y, d], dir: dir };
-      G.ports.push(port);
-      A.ports.push(port); B.ports.push(port);
-      A.openFaces.add(ca * 8 + dir); B.openFaces.add(cb * 8 + (dir < 4 ? (dir + 2) & 3 : (dir === 4 ? 5 : 4)));
-      var ek = Math.min(A.idx, B.idx) + '|' + Math.max(A.idx, B.idx);
-      if (!G.edgeMap.has(ek)) G.edgeMap.set(ek, port);
-    });
+    layout.edges.forEach(function (e) { addEdge(G, e); });
 
     /* ---- per piece shapes ---- */
     G.pieces.forEach(function (P2) { if (P2.room) buildRoom(G, P2); else buildCellPiece(G, P2); });
     buildPaths(G);
     return G;
+  }
+  function growDry(G, P2) {
+    if (!P2.dry || !P2.room || P2.d < 1) return;
+    var free = true, xx, yy;
+    for (yy = -1; yy <= P2.l && free; yy++) for (xx = -1; xx <= P2.w && free; xx++) {
+      var inside = xx >= 0 && xx < P2.w && yy >= 0 && yy < P2.l;
+      if (inside && G.cellMap.has(key(P2.x + xx, P2.y + yy, P2.d - 1))) free = false;
+    }
+    if (!free) return;
+    for (yy = 0; yy < P2.l; yy++) for (xx = 0; xx < P2.w; xx++) occupy(G, P2, P2.x + xx, P2.y + yy, P2.d - 1);
+    P2.d -= 1; P2.h += 1; P2.extendedUp = 1;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Endless mode: add a new generated segment below the bottom chamber  */
+  /* ------------------------------------------------------------------ */
+  // layout: a generator layout (its own seed). opts: { seg, off: [dx, dy, dd], idBase, branchBase,
+  //   from: the bottom piece above (gets a hole in its floor), column: [cx, cy] (the shaft column),
+  //   dTop, dStart (first and one-past-last connector layer) }.
+  // The new pieces are added to G (cells, ports, shapes, paths); nothing is sampled yet, so the new
+  // cells read as solid rock until cave.js samples them. Returns { pieces, connector, start, bottom,
+  // hole (the new port in the old floor), from, cells } or throws if a cell is already taken.
+  function extend(G, layout, opts) {
+    var oldSeed = SEED, off = opts.off, idBase = opts.idBase, B0 = opts.from, cx = opts.column[0], cy = opts.column[1];
+    SEED = TU.mix32((layout.seed >>> 0) ^ 0x51AB3C) >>> 0;
+    var segSeed = SEED, added = [], conn = [], i, k;
+    try {
+      // occupancy check first (nothing is changed if this fails)
+      var want = new Set();
+      for (var dc = opts.dTop; dc < opts.dStart; dc++) want.add(key(cx, cy, dc));
+      layout.pieces.forEach(function (gp) { for (var dd = 0; dd < gp.h; dd++) for (var yy = 0; yy < gp.l; yy++) for (var xx = 0; xx < gp.w; xx++) want.add(key(gp.x + off[0] + xx, gp.y + off[1] + yy, gp.d + off[2] + dd)); });
+      want.forEach(function (kk) { if (G.cellMap.has(kk)) throw new Error('cell taken'); });
+      var base = G.pieces.length;
+      // the connector shaft: one shaft piece per layer from the old floor down to the new start room
+      for (dc = opts.dTop, k = 0; dc < opts.dStart; dc++, k++) {
+        var cgp = { id: 9000 + k, type: 'shaft_down', shape: 'vthrough', role: 'main', branch: -1, zone: 4, variant: k % 4, x: cx, y: cy, d: dc, w: 1, l: 1, h: 1, sockets: [] };
+        var CP = makePiece(cgp, base + conn.length, [0, 0, 0], idBase); CP.connector = true; CP.seg = opts.seg; CP.seedV = segSeed;
+        conn.push(CP); G.pieces.push(CP);
+      }
+      var startP = null, bottomP = null;
+      layout.pieces.forEach(function (gp) {
+        var P2 = makePiece(gp, G.pieces.length, off, idBase);
+        P2.seg = opts.seg; P2.seedV = segSeed;
+        if (P2.branch >= 0) P2.branch += opts.branchBase;
+        if (P2.start) { P2.start = false; P2.segStart = true; startP = P2; }
+        if (P2.bottom) bottomP = P2;
+        added.push(P2); G.pieces.push(P2);
+      });
+      conn.concat(added).forEach(function (P2) { for (var dd = 0; dd < P2.h; dd++) for (var yy = 0; yy < P2.l; yy++) for (var xx = 0; xx < P2.w; xx++) occupy(G, P2, P2.x + xx, P2.y + yy, P2.d + dd); });
+      added.forEach(function (P2) { growDry(G, P2); });
+      conn.concat(added).forEach(function (P2) { finishPiece(G, P2); G.byId[P2.id] = P2; });
+      // ports: the hole in the old floor, down the shaft, into the new start room's ceiling
+      var hole = addEdge(G, [B0.id, conn[0].id, cx, cy, B0.d + B0.h - 1, 5]);
+      for (k = 0; k < conn.length - 1; k++) addEdge(G, [conn[k].id, conn[k + 1].id, cx, cy, conn[k].d, 5]);
+      addEdge(G, [conn[conn.length - 1].id, startP.id, cx, cy, opts.dStart - 1, 5]);
+      layout.edges.forEach(function (e) { addEdge(G, [e[0] + idBase, e[1] + idBase, e[2] + off[0], e[3] + off[1], e[4] + off[2], e[5]]); });
+      // shapes of the new pieces (this segment's seed)
+      conn.concat(added).forEach(function (P2) { if (P2.room) buildRoom(G, P2); else buildCellPiece(G, P2); });
+      // the old bottom chamber gets an arm down to the hole (rebuilt with ITS seed, so nothing else moves)
+      SEED = B0.seedV;
+      B0.groups = []; B0.post = []; B0.arms = null; B0.cellInfo = null;
+      buildRoom(G, B0);
+      SEED = segSeed;
+      // (G.bottom stays the old chamber until cave.js opens the floor)
+      // paths: the main line now runs on through the old bottom, down the shaft and through the new segment
+      var spec = G.pathSpec || { mainPath: G.layout.mainPath.slice(), branches: G.layout.branches.slice() };
+      spec.mainPath = spec.mainPath.concat(conn.map(function (P2) { return P2.id; }), layout.mainPath.map(function (id) { return id + idBase; }));
+      spec.branches = spec.branches.concat(layout.branches.map(function (b) {
+        return { id: b.id + opts.branchBase, kind: b.kind, from: b.from + idBase, to: b.to >= 0 ? b.to + idBase : b.to, pieces: b.pieces.map(function (id) { return id + idBase; }), treasure: b.treasure, seconds: b.seconds };
+      }));
+      G.pathSpec = spec;
+      G.pieces.forEach(function (P2) { P2.segs = []; });
+      G.paths = []; G.pathById = {};
+      buildPaths(G);
+      G.version++;
+      var cells = [];
+      conn.concat(added).forEach(function (P2) { P2.cells.forEach(function (c) { cells.push(c); }); });
+      return { pieces: added, connector: conn, start: startP, bottom: bottomP, hole: hole, from: B0, cells: cells, seedV: segSeed };
+    } finally { SEED = oldSeed; }
+  }
+  // Cells of piece P whose field can change because of the primitives in prims (plus the cell with the hole).
+  function touchedCells(P, prims, extraCell) {
+    var out = [];
+    P.cells.forEach(function (c) {
+      var x0 = c[0] * CELL, x1 = x0 + CELL, y1 = -c[2] * CELL, y0 = y1 - CELL, z1 = -c[1] * CELL, z0 = z1 - CELL, hit = false;
+      if (extraCell && c[0] === extraCell[0] && c[1] === extraCell[1] && c[2] === extraCell[2]) hit = true;
+      for (var i = 0; i < prims.length && !hit; i++) {
+        var q = prims[i], dx = Math.max(x0 - q.bx, 0, q.bx - x1), dy = Math.max(y0 - q.by, 0, q.by - y1), dz = Math.max(z0 - q.bz, 0, q.bz - z1);
+        if (Math.sqrt(dx * dx + dy * dy + dz * dz) < q.br + SKIP + 2.5) hit = true; // + wall noise and blending reach
+      }
+      if (hit) out.push(c);
+    });
+    return out;
+  }
+  // Put sampled blocks (from sampleCell with a target map) into the live field in one go.
+  function swapBlocks(G, map) { map.forEach(function (blk, k) { G.blocks.set(k, blk); }); lastK = -1; lastB = null; G.version++; }
+  // Forget cells (an old segment far behind): they read as solid rock from now on.
+  function freeCells(G, cells) {
+    cells.forEach(function (c) { var k = key(c[0], c[1], c[2]); G.cellMap.delete(k); G.blocks.delete(k); });
+    lastK = -1; lastB = null; G.version++;
   }
 
   // Direction from a port into a piece (unit vector).
@@ -522,7 +630,7 @@
     return path;
   }
   function buildPaths(G) {
-    var L = G.layout, byId = G.byId;
+    var L = G.pathSpec || G.layout, byId = G.byId;
     var mainSeq = L.mainPath.map(function (id) { return byId[id].idx; });
     G.main = addPath(G, 'main', 'main', -1, mainSeq, null, null);
     L.branches.forEach(function (b) {
@@ -622,7 +730,8 @@
   // point; boxes that are far from any wall (all corners clearly rock, or clearly open) are filled
   // by interpolation, and only boxes near a wall get the full (expensive) evaluation.
   var CR = RES / 2 + 1, FAR = 1.05;
-  function sampleCell(G, cx, cy, cd) {
+  // target: optional Map to write the block into instead of G.blocks (endless: swap it in later).
+  function sampleCell(G, cx, cy, cd, target) {
     var P = G.pieces[G.cellMap.get(key(cx, cy, cd))];
     var blk = new Float32Array(RES * RES * RES), coarse = new Float32Array(CR * CR * CR);
     var i, j, k, n = 0, x0 = cx * RES, j0 = cy * RES, k0 = cd * RES;
@@ -645,14 +754,12 @@
         blk[(lk * RES + lj) * RES + li] = v;
       }
     }
-    G.blocks.set(key(cx, cy, cd), blk);
+    (target || G.blocks).set(key(cx, cy, cd), blk);
+    if (!target && lastK === key(cx, cy, cd)) { lastK = -1; lastB = null; }
     return blk;
   }
   function sampleAll(G) {
-    G.cellMap.forEach(function (pi, k) {
-      var d = (k % 256) - 16, r = (k - (d + 16)) / 256, y = (r % 1024) - 512, x = (r - (y + 512)) / 1024 - 512;
-      sampleCell(G, x, y, d);
-    });
+    G.cellMap.forEach(function (pi, k) { var c = decode(k); sampleCell(G, c[0], c[1], c[2]); });
     G.version++;
   }
 
@@ -809,8 +916,9 @@
   }
 
   TU.caveGeo = {
-    CELL: CELL, RES: RES, VOX: VOX, key: key, cellCenter: cellCenter, DW: DW,
-    create: create, sampleAll: sampleAll, sampleCell: sampleCell, resamplePiece: resamplePiece, meshCell: meshCell,
+    CELL: CELL, RES: RES, VOX: VOX, key: key, decode: decode, cellCenter: cellCenter, DW: DW,
+    create: create, extend: extend, touchedCells: touchedCells, freeCells: freeCells, swapBlocks: swapBlocks, hfS: hfS,
+    sampleAll: sampleAll, sampleCell: sampleCell, resamplePiece: resamplePiece, meshCell: meshCell,
     field: field, gradient: gradient, march: march, pieceAt: pieceAt, evalPiece: evalPiece, hf: function (a, b, c, s) { return hf(a, b, c, s); },
     ampAt: ampAt, baseAmp: baseAmp, wallNoise: wallNoise, portBetween: portBetween,
     v: { add: vadd, sub: vsub, mul: vmul, len: vlen, norm: vnorm, dot: vdot, cross: vcross, lerp: vlerp }

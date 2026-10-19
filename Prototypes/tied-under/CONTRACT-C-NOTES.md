@@ -1,3 +1,5 @@
+> **Merged into CONTRACT.md (Appendix A) on Oct 19.** This file is kept for history only; CONTRACT.md is the source of truth and is kept up to date.
+
 # Agent C notes: player, hands, fx, audio
 
 What agent C added on top of CONTRACT.md. Files: `js/player.js`, `js/player-hands.js` (new, loaded right after player.js), `js/fx.js`, `js/audio.js`, `tests/test_player.py`.

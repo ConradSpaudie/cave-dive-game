@@ -61,6 +61,8 @@
   var climb = { active: false, t: 0, from: new T.Vector3(), to: new T.Vector3() };
   var grab = { on: false, point: new T.Vector3(), normal: new T.Vector3(), cooldown: 0 };
   var tug = { active: false, value: 0.5, last: null, t: 0 };
+  // Being held by a predator (TU.player.setHeld, called every step by creatures-predators.js while it holds you).
+  var held = { active: false, id: null, pull: new T.Vector3(), t: 0, kind: null, shake: 0, label: null, strength: 1, lastKey: null };
   var flow = { shelter: 0, forced: null, forcedT: 0, caughtWas: false };
   var squeezeS = { stuck: 0, last: null, wiggle: 0 };
   var mask = { slosh: 0, sloshV: 0, lastYaw: 0, lastRoll: 0, clearing: false, wasFlooded: false };
@@ -167,6 +169,7 @@
     P.health = 100; P.bleed = 0; P.bloodMask = 0; P.maskWater = 0; P.maskSlosh = 0; P.maskClearing = false;
     P.grab = false; P.stuck = 0; P.dry = false; P.lanternOut = false; P.lanternLevel = 0; P.wristRaised = false; P.tug = null;
     P.currentSpeed = 0; P.caught = false; P.quake = 0; P.shock = 0; P.rag = 0; P.maimed = null; P.kickMul = 1; P.warm = false; P.daze = 0; P.measure = null;
+    releaseHeld(null, true);
     P.bleedOut = 0; P.maskFlood = 0; run.bledSent = false; run.bleedHinted = false; run.dark = false; run.darkT = 0;
     P.headlamp = lamp.headlamp = hasHeadlamp(r);
     var inv = TU.player.inventory, ld = (r && r.loadout) || {};
@@ -243,6 +246,7 @@
     'Rock and currents',
     { action: 'grab', keys: ['KeyE'], label: 'Hold near rock: grab and anchor (currents cannot push you)', type: 'hold' },
     { action: 'tug', keys: ['KeyA', 'KeyD'], label: 'Strong current: hold E and tap A D A D to pull free', type: 'alternate' },
+    { action: 'struggle', keys: ['KeyA', 'KeyD'], label: 'Grabbed by a predator: tap A D A D to kick free (or hit it)', type: 'alternate' },
     'Body and gear',
     { action: 'interact', keys: ['KeyE'], label: 'Tap: pick up a tank, fossil or treasure, or catch a glowing creature', type: 'press' },
     { action: 'measure', keys: ['KeyT'], label: 'Hold: measure a creature with the tape', type: 'hold' },
@@ -367,7 +371,10 @@
     '#pl-tug .pl-tug-t{font-size:13px;letter-spacing:.08em;margin-bottom:8px}',
     '#pl-tug .pl-tug-k{font-size:11px;color:var(--ink-dim);margin-top:6px}',
     '#pl-tug .pl-tug-bar{height:10px;border:1px solid var(--hud-dim);border-radius:6px;background:rgba(2,10,12,.55);overflow:hidden;position:relative}',
-    '#pl-tug .pl-tug-bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--bad),var(--warn) 40%,var(--hud));transition:width .08s linear}'
+    '#pl-tug .pl-tug-bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--bad),var(--warn) 40%,var(--hud));transition:width .08s linear}',
+    '#pl-tug.pl-held{color:var(--bad);text-shadow:0 0 8px rgba(255,90,79,.5)}',
+    '#pl-tug.pl-held .pl-tug-bar{border-color:var(--bad);background:rgba(10,2,2,.55)}',
+    '#pl-tug.pl-held .pl-tug-bar i{background:linear-gradient(90deg,var(--hud),var(--warn) 55%,var(--bad))}'
   ].join('\n'));
   function enableTouch() {
     if (touch.on) return;
@@ -392,15 +399,74 @@
   }
 
   // Tug of war bar (fallback DOM, owned by the player: #pl-tug).
-  var tugEl = null, tugFill = null;
-  function showTug(v) {
+  // The ONE struggle bar: the current tug of war (mode 'tug') and breaking a predator's hold (mode 'held').
+  var tugEl = null, tugFill = null, tugMode = null;
+  var TUG_TXT = { tug: ['STRONG CURRENT. HOLD ON.', 'Hold E on the rock. Tap A D A D to pull yourself out.'], held: ['GRABBED', 'Tap A D A D to kick free, or hit it.'] };
+  function showTug(v, mode, title) {
+    mode = mode || 'tug';
     if (!tugEl) {
-      tugEl = TU.el('div', { id: 'pl-tug', html: '<div class="pl-tug-t">STRONG CURRENT. HOLD ON.</div><div class="pl-tug-bar"><i id="pl-tug-fill"></i></div><div class="pl-tug-k">Hold E on the rock. Tap A D A D to pull yourself out.</div>' });
+      tugEl = TU.el('div', { id: 'pl-tug', html: '<div class="pl-tug-t"></div><div class="pl-tug-bar"><i id="pl-tug-fill"></i></div><div class="pl-tug-k"></div>' });
       tugFill = TU.$('pl-tug-fill');
     }
-    tugEl.classList.add('pl-on'); tugFill.style.width = (v * 100).toFixed(1) + '%';
+    if (tugMode !== mode || (title && tugEl.getAttribute('data-t') !== title)) {
+      tugMode = mode; tugEl.setAttribute('data-t', title || '');
+      tugEl.querySelector('.pl-tug-t').textContent = title || TUG_TXT[mode][0];
+      tugEl.querySelector('.pl-tug-k').textContent = TUG_TXT[mode][1];
+      tugEl.classList.toggle('pl-held', mode === 'held');
+    }
+    tugEl.classList.add('pl-on'); tugFill.style.width = (clamp(v, 0, 1) * 100).toFixed(1) + '%';
   }
-  function hideTug() { if (tugEl) tugEl.classList.remove('pl-on'); }
+  function hideTug(mode) { if (tugEl && (!mode || tugMode === mode)) tugEl.classList.remove('pl-on'); }
+  // Held bar: how much grip the predator has left (shrinks as you struggle). Strength comes from TU.creatures.grabbedBy().
+  function showHeld() {
+    var g = typeof TU.creatures.grabbedBy === 'function' ? TU.creatures.grabbedBy() : null;
+    if (g && typeof g.strength === 'number') held.strength = g.strength;
+    if (!tug.active) showTug(held.strength, 'held', held.label || 'GRABBED');
+  }
+  function HC() { return cfg.held || { kick: 0.25, follow: 7, struggle: 0.08, stamina: 1.5, timeout: 0.25 }; }
+  // creatures-predators.js calls this every step while a predator holds the diver.
+  // pull: the velocity (m/s) the predator drags you with. opts: { kind: 'drag'|'hold'|'shake', strength 0..1, label, shake 0..1 }
+  function setHeld(byId, pull, opts) {
+    if (P.dry || P.surfaced || (TU.run && TU.run.tutorial)) return false;
+    opts = opts || {};
+    var wasOn = held.active;
+    held.active = true; held.id = byId; held.t = HC().timeout;
+    if (pull) held.pull.copy(pull); else held.pull.set(0, 0, 0);
+    held.kind = opts.kind || 'hold'; held.shake = opts.shake || (held.kind === 'shake' ? 1 : 0);
+    if (opts.label) held.label = opts.label;
+    if (typeof opts.strength === 'number') held.strength = opts.strength;
+    if (!wasOn) {
+      held.lastKey = null;
+      if (grab.on) { grab.on = false; TU.emit('player:grab', { on: false }); }
+      TU.emit('player:held', { on: true, id: byId, kind: held.kind });
+    }
+    P.held = { id: byId, kind: held.kind, strength: held.strength };
+    P.anim.held = true;
+    return true;
+  }
+  // Let go (the predator calls it on release; also used on reset and when the hold times out).
+  function releaseHeld(byId, quiet) {
+    if (byId != null && held.id !== byId) return false;
+    var was = held.active;
+    held.active = false; held.id = null; held.label = null; held.shake = 0; held.pull.set(0, 0, 0);
+    P.held = null; if (P.anim) P.anim.held = false;
+    hideTug('held');
+    if (was && !quiet) TU.emit('player:held', { on: false });
+    return was;
+  }
+  // Small helpers other modules call instead of writing TU.player.state themselves.
+  function calm(amount) { P.panic = clamp(P.panic - Math.max(0, +amount || 0), 0, 100); return P.panic; }       // panic points removed
+  function addPanic(n) { P.panic = clamp(P.panic + (+n || 0), 0, 100); return P.panic; }                        // panic points added (negative calms)
+  function applyRecoil(v) { if (v && isFinite(v.x) && isFinite(v.y) && isFinite(v.z)) P.vel.add(v); }           // m/s added to the diver
+  function addShake(n) { P.shake = Math.max(P.shake || 0, +n || 0); }
+  // Spend a fraction (0..1) of a full flashlight battery. Returns false (and spends nothing) if there is not enough.
+  function useBattery(frac) {
+    var need = clamp(+frac || 0, 0, 1) * 100;
+    if (P.battery < need) return false;
+    P.battery = clamp(P.battery - need, 0, 100);
+    if (P.battery <= 0 && P.flashOn) { P.flashOn = false; TU.emit('player:light', { on: false, reason: 'dead' }); onLightDied(); }
+    return true;
+  }
 
   /* ------------------------------------------------------------------ */
   /* Actions                                                             */
@@ -659,13 +725,29 @@
     var ud = (k('Space') || touch.up ? 1 : 0) - (k('KeyC') || k('ControlLeft') || k('ControlRight') || touch.down ? 1 : 0);
     if (!control) fb = lr = ud = 0;
     if (tug.active) lr = 0;                         // A / D are busy with the tug of war
+    // ---- held by a predator: weak kicks, A / D alternating taps struggle free (one struggle UI: #pl-tug) ----
+    if (held.active) {
+      held.t -= dt;
+      if (held.t <= 0) releaseHeld(null, false);   // the predator stopped refreshing the hold
+      else {
+        lr = 0;                                      // A / D are busy with the struggle
+        var kA = k('KeyA') || k('ArrowLeft'), kD = k('KeyD') || k('ArrowRight');
+        var sk = kA && !kD ? 'A' : kD && !kA ? 'D' : null;
+        if (sk && sk !== held.lastKey && control) {
+          held.lastKey = sk;
+          var still = typeof TU.creatures.struggle === 'function' ? TU.creatures.struggle(HC().struggle) : false;
+          P.stamina = Math.max(0, P.stamina - HC().stamina);
+          if (!still) releaseHeld(null, false);
+        }
+      }
+    }
     if (P.maimed && (fb || lr)) lr += P.maimed === 'left' ? -0.12 : 0.12; // a weak side pulls you off line
     P.slow = k('KeyR') && control;
     P.maskClearing = k('KeyM') && P.maskWater > 0.01 && control;
     var moving = Math.abs(fb) + Math.abs(lr) + Math.abs(ud) > 0.05;
     var wantSprint = (k('ShiftLeft') || k('ShiftRight')) && moving && !P.slow;
     if (P.stamina < cfg.stamina.lockBelow) run.sprintLock = true; if (P.stamina > cfg.stamina.unlockAbove) run.sprintLock = false;
-    var sprint = wantSprint && !run.sprintLock;
+    var sprint = wantSprint && !run.sprintLock && !held.active;
     P.sprint = sprint;
     // ---- mode ----
     if (rag.active) setMode('ragdoll');
@@ -695,7 +777,7 @@
 
     // ---- grab the rock (hold E near a wall) ----
     grab.cooldown = Math.max(0, grab.cooldown - dt);
-    var wantGrab = k('KeyE') && !eUsed && control && !P.dry && grab.cooldown <= 0;
+    var wantGrab = k('KeyE') && !eUsed && control && !P.dry && grab.cooldown <= 0 && !held.active; // a predator's grip beats a rock grab
     if (wantGrab && !grab.on) {
       var wd = env.wallDist != null ? env.wallDist : 9;
       if (wd < C.grab.reach && env.normal) {
@@ -728,7 +810,18 @@
     var hit = null;
     if (rag.active && rag.dry) hit = stepDry(dt, 0, 0, false, false);
     else if (P.dry) hit = stepDry(dt, fb, lr, sprint, ud > 0);
-    else hit = stepWater(dt, fb, lr, ud, moving, sprint, squeeze, curSpeed);
+    else {
+      var swimMul0 = run.swimMul;
+      if (held.active) {
+        // the predator pulls you toward its jaws; your own kicks are weak while it holds you
+        P.vel.lerp(held.pull, 1 - Math.exp(-dt * HC().follow));
+        if (held.shake > 0) { P.vel.x += (rand() - 0.5) * 60 * held.shake * dt; P.vel.y += (rand() - 0.5) * 40 * held.shake * dt; P.shake = Math.max(P.shake, 0.35 * held.shake); }
+        run.swimMul = swimMul0 * HC().kick;
+        showHeld();
+      }
+      hit = stepWater(dt, fb, lr, ud, moving, sprint, squeeze, curSpeed);
+      run.swimMul = swimMul0;
+    }
     env = P.env;
     var moved = before.distanceTo(P.pos);
     P.dist += moved; P.speed = moved / Math.max(dt, 1e-4);
@@ -754,7 +847,10 @@
     if (P.depth > cfg.narcosis.msgDepth && !run.narcWarned) { run.narcWarned = true; TU.emit('player:narcosis', { depth: P.depth }); }
     // ---- air ----
     var inflating = k('KeyB') && control && !P.dry, deflating = k('KeyV') && control && !P.dry;
-    var rate = A.baseRate * (sprint ? A.sprintMul : 1) * (1 + P.panic / 100 * A.panicMul) * (P.slow ? A.slowMul : 1) * (1 + P.depth / A.depthPer) * demo;
+    // depth makes each breath denser: 1x at the surface, +1x per depthPer m, capped at depthMax (2.5x) so the endless deep stays playable
+    var depthF = Math.min(1 + P.depth / A.depthPer, A.depthMax || 2.5);
+    run.depthAirMul = depthF;
+    var rate = A.baseRate * (sprint ? A.sprintMul : 1) * (1 + P.panic / 100 * A.panicMul) * (P.slow ? A.slowMul : 1) * depthF * demo;
     if (inflating && !P.surfaced) rate += A.inflateCost * demo;
     if (deflating && !P.surfaced && P.vestAir > 0) rate -= A.deflateRefund;
     if (P.maskClearing && P.inWater && !P.surfaced) rate += C.mask.clearAir * demo;
@@ -800,7 +896,12 @@
     var nearGlow = bottom ? P.pos.distanceTo(bottom.pos) < 14 : false;
     var lit = (P.flashOn && shock.lightOff <= 0) || P.lanternLevel > 0.3;
     run.darkT -= dt;
-    if (run.darkT <= 0) { run.darkT = 0.25; run.glowNear = TU.creatures.nearCount(P.pos, cfg.panic.darkRadius || 8, { glowing: true }) > 0; }
+    if (run.darkT <= 0) {
+      run.darkT = 0.25;
+      run.glowNear = TU.creatures.nearCount(P.pos, cfg.panic.darkRadius || 8, { glowing: true }) > 0;
+      // a lit glow stick within 6 m is light too (glowsticks.js)
+      if (!run.glowNear && TU.glowsticks && typeof TU.glowsticks.near === 'function') { try { run.glowNear = TU.glowsticks.near(P.pos, 6) > 0; } catch (e) { /* optional */ } }
+    }
     var dark = !lit && env.daylight < 0.02 && !run.glowNear && !breathingAir && !nearGlow;
     run.dark = dark;
     var dp = PN.calm;
@@ -1470,6 +1571,16 @@
     rescue: rescue,
     // Co-op hook for later (Unreal): a teammate pulling on the rope adds to your tug of war.
     tugAssist: function (amount) { if (tug.active) tug.value = clamp(tug.value + (amount || 0.05), 0, 1); return tug.active; },
+    // Other modules change the diver through these (CONTRACT.md 8.2), never by writing TU.player.state.
+    calm: calm,
+    addPanic: addPanic,
+    applyRecoil: applyRecoil,
+    addShake: addShake,
+    useBattery: useBattery,
+    setHeld: setHeld,
+    release: function (byId) { return releaseHeld(byId == null ? null : byId, false); },
+    releaseHeld: function (byId) { return releaseHeld(byId == null ? null : byId, false); },
+    isHeld: function () { return held.active ? { id: held.id, kind: held.kind, strength: held.strength } : null; },
     bindings: BINDINGS,
     debug: debug
   });

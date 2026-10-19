@@ -127,7 +127,7 @@
   // Split one big InstancedMesh into regional ones (about 32 m boxes) so the renderer can skip
   // regions outside the view or far away. All parts keep the same name; the biggest comes first.
   var REGION = 40;
-  function splitRegions(W, big, name, shadow) {
+  function splitRegions(W, big, name, shadow, root, out) {
     var groups = new Map(), m4 = new T.Matrix4(), p = new T.Vector3(), q = new T.Quaternion(), s = new T.Vector3(), col = new T.Color();
     for (var i = 0; i < big.count; i++) {
       big.getMatrixAt(i, m4); m4.decompose(p, q, s);
@@ -149,19 +149,27 @@
       // formations cast shadows on the walls but do not receive them (thin cones show shadow acne)
       mesh.name = name; mesh.castShadow = shadow && !TU.caveMat.isLow(); mesh.receiveShadow = name === 'boulders' || name === 'cobbles';
       mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      W.root.add(mesh); W.instRegions.push(mesh);
+      (root || W.root).add(mesh); W.instRegions.push(mesh);
+      if (out) { mesh.userData.seg = out.seg; out.regions.push(mesh); }
     });
   }
 
   /* ------------------------------------------------------------------ */
   /* Build                                                               */
   /* ------------------------------------------------------------------ */
-  function build(W, G, ctx) {
-    var S = getShapes(), root = W.root, rand = ctx.rand, field = ctx.field, march = ctx.march;
-    var M = ctx.mats;
-    var out = { stalactites: [], finds: [], stake: null, core: null, coreAxis: [1, 0, 0], stalSpot: null };
-    W.anim = { rays: [], ancient: null, gyros: [], motes: null, glints: [], waterTex: M.water.userData.normalTex, lights: [] };
-    W.findMesh = {}; W.instRegions = [];
+  // Dressing as a job of small tasks, so an endless segment can be dressed a few ms per frame.
+  // ctx (from cave.js) plus: pieces (default all), root (THREE.Group, default W.root), seg (index),
+  // entrance (build the sky opening and the stake, default true), seed, findPrefix.
+  // build(W, G, ctx) runs the whole job at once (the first cave). Returns the job: { step(ms), done, out }.
+  function start(W, G, ctx) {
+    var S = getShapes(), root = ctx.root || W.root, rand = ctx.rand, field = ctx.field, march = ctx.march;
+    var M = ctx.mats, pieces = ctx.pieces || G.pieces, seg = ctx.seg || 0;
+    var out = { stalactites: [], finds: [], stake: null, core: null, coreAxis: [1, 0, 0], stalSpot: null, seg: seg, regions: [] };
+    if (!W.anim || ctx.fresh) {
+      W.anim = { rays: [], ancient: null, ancients: [], gyros: [], motes: null, glints: [], waterTex: M.water.userData.normalTex, lights: [] };
+      W.findMesh = {}; W.instRegions = [];
+    }
+    var tasks = [];
     var m4 = new T.Matrix4(), q = new T.Quaternion(), qy = new T.Quaternion(), sc = new T.Vector3(), p = new T.Vector3(), col = new T.Color(), e = new T.Euler(), yAxis = new T.Vector3(0, 1, 0);
     var gtmp = [0, 0, 0];
     function gradAt(x, y, z) { GEO.gradient(G, x, y, z, gtmp); var l = Math.sqrt(gtmp[0] * gtmp[0] + gtmp[1] * gtmp[1] + gtmp[2] * gtmp[2]) || 1; return [gtmp[0] / l, gtmp[1] / l, gtmp[2] / l]; }
@@ -232,7 +240,7 @@
       ctx.addCollider({ t: 1, a: [x, y0 + rw, z0], b: [x, y1 - rw, z0], r: rw * 1.05 + 0.05 });
     }
     var z0 = 0; // column z (set before addColumn)
-    G.pieces.forEach(function (P) {
+    function decoPiece(P) {
       if (P.type === 'squeeze' || P.start) return;
       var deco = P.deco || 0; if (deco < 0.04) return;
       var tries = Math.round(deco * (P.room ? P.cells.length * 10 : 6) * (0.7 + 0.6 * rand()));
@@ -279,9 +287,10 @@
           if (sl > 0.9) ctx.addCollider({ t: 1, a: [f[0], f[1] + sr, f[2]], b: [f[0], f[1] + sl * 0.6, f[2]], r: sr * 0.7 });
         }
       }
-    });
+    }
+    pieces.forEach(function (P) { tasks.push(function () { decoPiece(P); }); });
     // giant stalactites in the Bell Chamber, organ pipes in the Pipe Organ
-    G.pieces.forEach(function (P) {
+    tasks.push(function () { pieces.forEach(function (P) {
       if (P.lmName === 'The Bell Chamber') {
         for (var k = 0; k < 7; k++) {
           var x = P.center[0] + (rand() - 0.5) * 9, z = P.center[2] + (rand() - 0.5) * 9, b = [x, P.floorY + 3, z];
@@ -301,9 +310,10 @@
           z0 = z2; addColumn(x2, by - d3, by + u3, 0.22 + 0.1 * Math.sin(j * 1.7) + 0.06 * rand());
         }
       }
-    });
+    }); });
+    tasks.push(function () {
     stal.count = nStal; stag.count = nStag; straw.count = nStraw;
-    splitRegions(W, stal, 'stalactites', true); splitRegions(W, stag, 'stalagmites', true); splitRegions(W, straw, 'sodastraws', false);
+    splitRegions(W, stal, 'stalactites', true, root, out); splitRegions(W, stag, 'stalagmites', true, root, out); splitRegions(W, straw, 'sodastraws', false, root, out);
     if (colGeo.idx.length) {
       var cg = new T.BufferGeometry();
       cg.setAttribute('position', new T.Float32BufferAttribute(colGeo.pos, 3));
@@ -314,21 +324,22 @@
       var cm = new T.Mesh(cg, M.calcite); cm.name = 'columns'; cm.castShadow = true; cm.receiveShadow = true; cm.frustumCulled = false;
       root.add(cm);
     }
+    });
 
     /* ---- the bottom: the Ancient Ring ---- */
-    var B = G.bottom;
+    var B = ctx.bottom || G.bottom;
     var core = [B.center[0], B.floorY + 5.2, B.center[2]];
     for (var tr = 0; tr < 8 && field(core[0], core[1], core[2]) > -3; tr++) core[1] += 0.8;
     var entry = B.arms && B.arms[0] ? B.arms[0].q : [core[0] + 10, core[1], core[2]];
     var axis = [entry[0] - core[0], 0, entry[2] - core[2]], al = Math.sqrt(axis[0] * axis[0] + axis[2] * axis[2]);
     axis = al > 0.5 ? [axis[0] / al, 0, axis[2] / al] : [1, 0, 0];
     out.core = core; out.coreAxis = axis;
-    buildAncient(W, G, ctx, core, axis, B);
+    tasks.push(function () { buildAncient(W, G, ctx, core, axis, B, root, seg); });
 
     /* ---- breakdown boulders ---- */
     var blocks = inst(S.block, M.boulder, MAX_BOULDER), rounds = inst(S.round, M.boulder, MAX_BOULDER);
     var nb = 0, nr = 0;
-    G.pieces.forEach(function (P) {
+    function boulderPiece(P) {
       var t = P.type;
       if (t === 'squeeze' || t === 'current' || t === 'shaft_down' || t === 'shaft_up' || P.start) return;
       var n = P.room ? Math.round(P.cells.length * (4 + 4 * rand()) * (P.zone >= 2 ? 1.4 : 1)) : (rand() < 0.4 ? 1 + Math.floor(rand() * 3) : 0);
@@ -354,25 +365,26 @@
         else continue;
         if (size > 0.28) ctx.addCollider({ t: 0, c: [p.x, p.y, p.z], r: (sx + sy + sz) / 3 * 0.48 });
       }
-    });
+    }
+    pieces.forEach(function (P) { tasks.push(function () { boulderPiece(P); }); });
+    tasks.push(function () {
     blocks.count = nb; rounds.count = nr;
-    splitRegions(W, blocks, 'boulders', true); splitRegions(W, rounds, 'cobbles', true);
-    // rubble for collapses (filled later)
-    var rub = inst(S.block, M.boulder, MAX_RUBBLE); rub.count = 0; rub.frustumCulled = false; rub.castShadow = true; rub.name = 'rubble';
-    root.add(rub); W.rubble = rub;
+    splitRegions(W, blocks, 'boulders', true, root, out); splitRegions(W, rounds, 'cobbles', true, root, out);
+    // rubble for collapses (filled later; one shared mesh on the cave root, it outlives segments)
+    if (!W.rubble) {
+      var rub = inst(S.block, M.boulder, MAX_RUBBLE); rub.count = 0; rub.frustumCulled = false; rub.castShadow = true; rub.name = 'rubble';
+      W.root.add(rub); W.rubble = rub;
+    }
 
     /* ---- water surfaces ---- */
-    function waterPlane(x, y, z, sx, sz) {
-      var m = new T.Mesh(new T.PlaneGeometry(sx, sz), M.water);
-      m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.renderOrder = 2; m.name = 'water';
-      root.add(m); return m;
-    }
-    G.pieces.forEach(function (P) {
-      if (P.type === 'air_pocket') waterPlane(P.node[0], P.waterY, P.node[2], 7.6, 7.6);
-      if (P.dry || P.airChamber) waterPlane(P.center[0], P.waterY, P.center[2], P.box.x1 - P.box.x0, P.box.z1 - P.box.z0);
+    pieces.forEach(function (P) {
+      if (P.type === 'air_pocket') waterPlane(root, M, P.node[0], P.waterY, P.node[2], 7.6, 7.6);
+      if (P.dry || P.airChamber) waterPlane(root, M, P.center[0], P.waterY, P.center[2], P.box.x1 - P.box.x0, P.box.z1 - P.box.z0);
     });
+    });
+    if (ctx.entrance !== false) tasks.push(function () {
     var E = G.entrance;
-    var ew = waterPlane(E.pool[0], 0, E.pool[2], 16, 16);
+    var ew = waterPlane(root, M, E.pool[0], 0, E.pool[2], 16, 16);
     // the entrance pool is lit by the sky: thinner, so the bright opening shows through
     ew.material = own(M.water.clone()); ew.material.opacity = 0.55; ew.material.color.set(0x2a6a70); ew.material.onBeforeCompile = M.water.onBeforeCompile; ew.material.customProgramCacheKey = M.water.customProgramCacheKey;
 
@@ -415,13 +427,15 @@
     stake.rotation.y = Math.atan2(away[2], -away[0]); // local +x points out of the wall
     root.add(stake);
     out.stake = new T.Vector3(wallP[0] - away[0] * 0.38, sy0, wallP[2] - away[2] * 0.38);
+    });
 
     /* ---- landmark props ---- */
-    G.pieces.forEach(function (P) { if (P.type === 'landmark') buildLandmark(W, G, ctx, P, rand); });
+    pieces.forEach(function (P) { if (P.type === 'landmark') tasks.push(function () { buildLandmark(W, G, ctx, P, rand, root); }); });
 
     /* ---- dry chamber glowworms ---- */
-    G.pieces.forEach(function (P) {
+    pieces.forEach(function (P) {
       if (!P.dry) return;
+      tasks.push(function () {
       var pts = [];
       for (var k2 = 0; k2 < 320; k2++) {
         var b = randomInside(P); if (!b || b[1] < P.waterY) continue;
@@ -432,12 +446,14 @@
       var gg = new T.BufferGeometry(); gg.setAttribute('position', new T.Float32BufferAttribute(pts, 3));
       var pm = own(new T.PointsMaterial({ color: 0x7FE8FF, size: 0.07, map: TU.tex.get('dot'), transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
       var pp = new T.Points(gg, pm); pp.name = 'glowworms'; root.add(pp);
+      });
     });
 
     /* ---- finds: fossils and treasure ---- */
-    buildFinds(W, G, ctx, out, rand);
+    tasks.push(function () { buildFinds(W, G, ctx, out, rand, pieces, B, root); });
 
     /* ---- a good look at a big stalactite on the main line (filming and the test) ---- */
+    tasks.push(function () {
     var bestS = null;
     out.stalactites.forEach(function (st) {
       if (!st.main || st.s < 15) return;
@@ -459,14 +475,32 @@
       out.stalSpot = { pos: new T.Vector3(vp2[0], vp2[1], vp2[2]), yaw: yp.yaw, pitch: clamp(yp.pitch, -1.3, 1.3), s: bestS.s, pathId: 'main' };
     }
     W.counts = { stalactites: nStal, stalagmites: nStag, straws: nStraw, boulders: nb + nr };
-    return out;
+    });
+    var ti = 0;
+    var job = {
+      out: out, done: false, tasks: tasks.length,
+      // run tasks for up to ms milliseconds (at least one); true when everything is done
+      step: function (ms) {
+        var t0 = performance.now();
+        while (ti < tasks.length) { tasks[ti++](); if (performance.now() - t0 > ms) break; }
+        job.done = ti >= tasks.length;
+        return job.done;
+      }
+    };
+    return job;
+  }
+  function build(W, G, ctx) { var job = start(W, G, ctx); job.step(Infinity); return job.out; }
+  function waterPlane(root, M, x, y, z, sx, sz) {
+    var m = new T.Mesh(new T.PlaneGeometry(sx, sz), M.water);
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.renderOrder = 2; m.name = 'water';
+    root.add(m); return m;
   }
 
   /* ------------------------------------------------------------------ */
   /* The Ancient Ring                                                    */
   /* ------------------------------------------------------------------ */
-  function buildAncient(W, G, ctx, core, axis, B) {
-    var root = W.root, rand = ctx.rand, field = ctx.field, march = ctx.march;
+  function buildAncient(W, G, ctx, core, axis, B, root, seg) {
+    root = root || W.root; var rand = ctx.rand, field = ctx.field, march = ctx.march;
     var group = new T.Group(); group.name = 'ancient';
     var texRockN = TU.tex.get('rockNormal');
     var glyph = TU.tex.get('glyph').clone(); (glyph.userData = glyph.userData || {}).own = true; glyph.needsUpdate = true; glyph.wrapS = T.RepeatWrapping; glyph.repeat.set(4, 1);
@@ -487,7 +521,7 @@
     // gyroscope rings that turn slowly around the core
     var gm = own(new T.MeshStandardMaterial({ color: 0x3b4446, roughness: 0.35, metalness: 0.7, emissive: 0x3D7BFF, emissiveIntensity: 0.25 }));
     var g1 = new T.Mesh(new T.TorusGeometry(3.05, 0.09, 10, 100), gm), g2 = new T.Mesh(new T.TorusGeometry(2.3, 0.07, 10, 90), gm);
-    group.add(g1, g2); W.anim.gyros = [g1, g2];
+    group.add(g1, g2); W.anim.gyros = [g1, g2]; var gyros = [g1, g2];
     // the core
     var coreG = new T.IcosahedronGeometry(0.62, 2), cp = coreG.attributes.position;
     for (i = 0; i < cp.count; i++) { var cx = cp.getX(i), cy = cp.getY(i), cz = cp.getZ(i), dd = 1 + 0.12 * N.n3(cx * 3, cy * 3, cz * 3); cp.setXYZ(i, cx * dd, cy * dd, cz * dd); }
@@ -526,7 +560,7 @@
         var bp = bg.attributes.position;
         for (var j = 0; j < bp.count; j++) { var bx = bp.getX(j), by = bp.getY(j), bz = bp.getZ(j), w = 0.07 * N.n3(bx * 3 + i, by * 2, bz * 3); bp.setXYZ(j, bx + w, by, bz + w); }
         bg.computeVertexNormals();
-        var mono = new T.Mesh(bg, dark); mono.castShadow = true; mono.receiveShadow = true;
+        var mono = new T.Mesh(bg, dark); mono.castShadow = true; mono.receiveShadow = true; mono.name = 'monolith';
         var strip = new T.Mesh(new T.PlaneGeometry(0.32, h * 0.8), own(new T.MeshBasicMaterial({ map: glyph, color: 0x4FF2D0, transparent: true, opacity: 0.6, blending: T.AdditiveBlending, depthWrite: false })));
         strip.position.set(0, h * 0.5, 0.39); mono.add(strip);
         mono.position.set(px, py - 0.25, pz);
@@ -534,7 +568,7 @@
         if (fallen) { mono.rotateX(-1.35); mono.position.y += 0.3; }
         else mono.rotateZ((rand() - 0.5) * 0.12);
         root.add(mono);
-        if (!fallen) ctx.addCollider({ t: 1, a: [px, py + 0.4, pz], b: [px, py + h - 0.4, pz], r: 0.55 });
+        if (!fallen) { var mc = ctx.addCollider({ t: 1, a: [px, py + 0.4, pz], b: [px, py + h - 0.4, pz], r: 0.55 }); mono.userData.col = mc; }
         placed = true;
       }
     }
@@ -559,22 +593,26 @@
       ctx.addCollider({ t: 0, c: [skull.position.x, skull.position.y, skull.position.z], r: 1.0 });
     }
     // drifting motes around the core
-    var mp = [], mrand = TU.rng(G.seed, 15).fn();
+    var mp = [], mrand = TU.rng(ctx.seed != null ? ctx.seed : G.seed, 15).fn();
     for (i = 0; i < 140; i++) { var r3 = 1.6 + mrand() * 8, th = mrand() * 6.283, ph = (mrand() - 0.5) * 2.2; mp.push(Math.cos(th) * Math.cos(ph) * r3, Math.sin(ph) * r3 * 0.6, Math.sin(th) * Math.cos(ph) * r3); }
     var mg = new T.BufferGeometry(); mg.setAttribute('position', new T.Float32BufferAttribute(mp, 3));
     var motes = new T.Points(mg, own(new T.PointsMaterial({ color: 0x6FFFE9, size: 0.09, map: TU.tex.get('dot'), transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false })));
     motes.position.set(core[0], core[1], core[2]); root.add(motes);
     // One light for the whole bottom chamber (every dynamic light costs on every lit pixel, so we keep few).
     // The ring's violet glow comes from its emissive material instead of a second light.
-    var coreLight = new T.PointLight(0x4fc8ff, 1.2, 30, 1.6); coreLight.position.set(core[0], (core[1] + fy + 1.8) / 2, core[2]); root.add(coreLight);
-    W.anim.ancient = { group: group, ring: stone, dais: daisM, core: coreM, halo: halo, halo2: halo2, motes: motes, light: coreLight, light2: null, gyro: gm, pos: new T.Vector3(core[0], core[1], core[2]) };
+    // Endless mode adds more rings: they all share this one light, which follows the nearest ring.
+    var lightPos = new T.Vector3(core[0], (core[1] + fy + 1.8) / 2, core[2]);
+    if (!W.coreLight) { W.coreLight = new T.PointLight(0x4fc8ff, 1.2, 30, 1.6); W.root.add(W.coreLight); W.coreLight.position.copy(lightPos); }
+    var an = { group: group, ring: stone, dais: daisM, core: coreM, halo: halo, halo2: halo2, motes: motes, light: W.coreLight, light2: null, gyro: gm, gyros: gyros,
+      pos: new T.Vector3(core[0], core[1], core[2]), lightPos: lightPos, seg: seg || 0, power: 0 };
+    W.anim.ancients.push(an); W.anim.ancient = an;
   }
 
   /* ------------------------------------------------------------------ */
   /* Landmark props                                                      */
   /* ------------------------------------------------------------------ */
-  function buildLandmark(W, G, ctx, P, rand) {
-    var root = W.root, field = ctx.field, march = ctx.march;
+  function buildLandmark(W, G, ctx, P, rand, root) {
+    root = root || W.root; var field = ctx.field, march = ctx.march;
     var name = P.lmName, c = [P.center[0], P.floorY + 2.5, P.center[2]];
     if (field(c[0], c[1], c[2]) > -1) c[1] += 2;
     var fy = c[1] - march(c, [0, -1, 0], 12);
@@ -627,8 +665,9 @@
   var FOSSIL = [['Ammonite', 'Sea lily stem'], ['Trilobite', 'Fossil shark tooth'], ['Cave bear tooth', 'Nautilus shell'], ['Ichthyosaur vertebra', 'Giant ammonite'], ['Unknown skull', 'Bone of the Old Water']];
   var TREASURE = [['Corroded coin purse', 'Brass compass'], ['Old diving knife', 'Silver pocket watch'], ['Brass diving helmet', 'Silver ingot'], ['Gold idol', 'Jeweled dagger'], ['Crown of the deep', 'Glowing relic']];
   var VALUE = { fossil: [60, 160, 380, 800, 1800], treasure: [120, 300, 650, 1300, 2800] };
-  function buildFinds(W, G, ctx, out, rand) {
-    var root = W.root, field = ctx.field, march = ctx.march, hard = G.layout.difficulty === 'hard' ? 1 : 0, n = 0;
+  function buildFinds(W, G, ctx, out, rand, pieces, bottomP, root) {
+    root = root || W.root; pieces = pieces || G.pieces; bottomP = bottomP || G.bottom;
+    var field = ctx.field, march = ctx.march, hard = G.layout.difficulty === 'hard' ? 1 : 0, n = 0, pre = ctx.findPrefix || '';
     var boneM = own(new T.MeshStandardMaterial({ color: 0xD9CFB8, roughness: 0.7 })), gold = own(new T.MeshStandardMaterial({ color: 0xd4a73a, roughness: 0.3, metalness: 1 })), woodM = own(new T.MeshStandardMaterial({ color: 0x3b2a1a, roughness: 0.9 }));
     var glintM = own(new T.SpriteMaterial({ map: TU.tex.get('glow'), color: 0xfff1c8, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }));
     function place(P, kind, at) {
@@ -639,7 +678,7 @@
       var f = [b[0], b[1] - dn, b[2]];
       if (P.dry && f[1] < P.waterY) return;
       var tier = clamp(P.zone + 1 + hard, 1, 5), names = kind === 'fossil' ? FOSSIL : TREASURE;
-      var name = names[tier - 1][Math.floor(rand() * 2)], id = 'find' + n++;
+      var name = names[tier - 1][Math.floor(rand() * 2)], id = pre + 'find' + n++;
       var g = new T.Group();
       if (kind === 'fossil') {
         var am = new T.Mesh(new T.TorusGeometry(0.1, 0.045, 8, 26), boneM); am.scale.set(1, 1, 0.55); g.add(am);
@@ -652,18 +691,18 @@
         for (var k = 0; k < 7; k++) { var coin = new T.Mesh(new T.CylinderGeometry(0.025, 0.025, 0.006, 10), gold); coin.position.set(0.25 + rand() * 0.2, 0.004, (rand() - 0.5) * 0.3); coin.rotation.set((rand() - 0.5) * 0.4, 0, (rand() - 0.5) * 0.4); g.add(coin); }
         g.rotation.y = rand() * 6; g.position.set(f[0], f[1] - 0.03, f[2]);
       }
-      var gl = new T.Sprite(glintM.clone()); own(gl.material); gl.scale.setScalar(0.35); gl.position.set(0, 0.25, 0); g.add(gl); W.anim.glints.push({ s: gl, ph: rand() * 9, id: id });
+      var gl = new T.Sprite(glintM.clone()); own(gl.material); gl.scale.setScalar(0.35); gl.position.set(0, 0.25, 0); g.add(gl); W.anim.glints.push({ s: gl, ph: rand() * 9, id: id, seg: ctx.seg || 0 });
       root.add(g);
       W.findMesh[id] = g;
       out.finds.push({ id: id, kind: kind, name: name, tier: tier, value: VALUE[kind][tier - 1], pos: new T.Vector3(f[0], f[1] + 0.1, f[2]), taken: false, pieceId: P.id, zone: P.zone });
     }
-    G.pieces.forEach(function (P) {
+    pieces.forEach(function (P) {
       if (P.start) return;
       if (P.treasure && P.node) place(P, 'treasure', P.node);
       else if (P.type === 'dead_end' && P.zone >= 2 && rand() < 0.4 && P.node) place(P, 'fossil', P.node);
       else if (P.room && !P.bottom && P.zone >= 1 && rand() < 0.5) place(P, 'fossil');
     });
-    if (G.bottom) place(G.bottom, 'fossil');
+    if (bottomP) place(bottomP, 'fossil');
   }
 
   /* ------------------------------------------------------------------ */
@@ -712,20 +751,29 @@
     for (var k = 0; k < A.rays.length; k++) { var r = A.rays[k]; r.material.opacity = 0.012 + 0.022 * (0.5 + 0.5 * Math.sin(t * 0.6 + r.userData.ph)); r.rotation.z = Math.sin(t * 0.2 + r.userData.ph) * 0.05; }
     if (A.dayLight) A.dayLight.intensity = 0.6 + Math.sin(t * 1.7) * 0.08 + Math.sin(t * 3.1) * 0.05;
     if (A.waterTex) A.waterTex.offset.set(Math.sin(t * 0.07) * 0.4, t * 0.025);
-    var an = A.ancient;
-    if (an) {
-      var dCore = ppos.distanceTo(an.pos), near = smooth(34, 4, dCore), pul = 0.5 + 0.5 * Math.sin(t * 0.9);
-      an.ring.emissiveIntensity = 0.22 + 0.22 * pul + near * 0.45;
-      an.dais.emissiveIntensity = 0.15 + 0.15 * (0.5 + 0.5 * Math.sin(t * 0.9 - 1.2)) + near * 0.3;
-      an.gyro.emissiveIntensity = 0.15 + 0.2 * pul + near * 0.25;
-      an.core.scale.setScalar(0.85 + 0.12 * pul + near * 0.15);
-      an.core.rotation.y = t * 0.2; an.core.rotation.x = t * 0.13;
-      an.halo.material.opacity = 0.25 + 0.15 * pul + near * 0.2;
-      an.halo2.material.opacity = 0.1 + 0.08 * pul + near * 0.12;
-      an.light.intensity = 0.75 + 0.35 * pul + near * 0.9;
-      if (an.light2) an.light2.intensity = 0.25 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.5)) + near * 0.25;
-      if (A.gyros.length) { A.gyros[0].rotation.x = t * 0.21; A.gyros[0].rotation.y = t * 0.13; A.gyros[1].rotation.y = -t * 0.3; A.gyros[1].rotation.z = t * 0.17; }
-      an.motes.rotation.y = t * 0.035; an.motes.position.y = an.pos.y + Math.sin(t * 0.3) * 0.25;
+    // The Ancient Rings (one per segment end in endless mode). power 0..1: the ring "wakes up"
+    // when you keep diving (brighter, faster, a bigger core). The shared light sits at the nearest ring.
+    var ancs = A.ancients || (A.ancient ? [A.ancient] : []), best = null, bestD = 1e9;
+    for (var ai = 0; ai < ancs.length; ai++) {
+      var an = ancs[ai], dCore = ppos.distanceTo(an.pos), near = smooth(34, 4, dCore), pul = 0.5 + 0.5 * Math.sin(t * (0.9 + 2.2 * (an.power || 0)));
+      var pw = an.power || 0;
+      an.ring.emissiveIntensity = 0.22 + 0.22 * pul + near * 0.45 + pw * 1.2;
+      an.dais.emissiveIntensity = 0.15 + 0.15 * (0.5 + 0.5 * Math.sin(t * 0.9 - 1.2)) + near * 0.3 + pw * 0.8;
+      an.gyro.emissiveIntensity = 0.15 + 0.2 * pul + near * 0.25 + pw * 0.9;
+      an.core.scale.setScalar(0.85 + 0.12 * pul + near * 0.15 + pw * 0.5);
+      an.core.rotation.y = t * (0.2 + pw * 1.5); an.core.rotation.x = t * 0.13;
+      an.halo.material.opacity = Math.min(1, 0.25 + 0.15 * pul + near * 0.2 + pw * 0.4);
+      an.halo2.material.opacity = 0.1 + 0.08 * pul + near * 0.12 + pw * 0.2;
+      an.lightI = 0.75 + 0.35 * pul + near * 0.9 + pw * 1.6;
+      var gy = an.gyros || A.gyros, sp = 1 + pw * 5;
+      if (gy && gy.length) { gy[0].rotation.x = t * 0.21 * sp; gy[0].rotation.y = t * 0.13 * sp; gy[1].rotation.y = -t * 0.3 * sp; gy[1].rotation.z = t * 0.17 * sp; }
+      an.motes.rotation.y = t * (0.035 + pw * 0.3); an.motes.position.y = an.pos.y + Math.sin(t * 0.3) * 0.25;
+      if (dCore < bestD) { bestD = dCore; best = an; }
+    }
+    if (best && best.light) {
+      best.light.position.copy(best.lightPos || best.pos);
+      best.light.intensity = best.lightI;
+      if (best.light2) best.light2.intensity = 0.25 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.5));
     }
     for (k = 0; k < A.glints.length; k++) {
       var gl = A.glints[k], ph = (t * 0.7 + gl.ph) % 5, dd = gl.s.parent ? ppos.distanceTo(gl.s.parent.position) : 99;
@@ -770,5 +818,5 @@
     var cull = (TU.fx.gfx && TU.fx.gfx.cullDist) || TU.cfg.cave.cullDist || 60;
     for (var i = 0; i < W.instRegions.length; i++) { var m = W.instRegions[i], bs = m.geometry.boundingSphere; m.visible = cam.distanceTo(bs.center) - bs.radius < cull; }
   }
-  TU.caveDress = { build: build, frame: frame, animate: animate, dropRock: dropRock, rubble: rubble, resetDynamic: resetDynamic, shapes: getShapes };
+  TU.caveDress = { build: build, start: start, waterPlane: waterPlane, frame: frame, animate: animate, dropRock: dropRock, rubble: rubble, resetDynamic: resetDynamic, shapes: getShapes };
 })();

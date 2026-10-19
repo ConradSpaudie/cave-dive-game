@@ -630,7 +630,9 @@
     TU.on('run:continue', function (e) {
       var prev = K.run, log = newRunLog(e.run), inv = TU.player.inventory || {};
       log.continued = true; log.leg = e.leg || 2;
-      log.startZone = U.zoneOfDepth(TU.player.state.maxDepth || 0);
+      // where this leg starts (TU.cave.zoneAt counts the Beyond zones 5+), so 'Deeper than the bottom' works past zone 4
+      var zs = TU.cave && typeof TU.cave.zoneAt === 'function' ? TU.cave.zoneAt(TU.player.state.pos) : null;
+      log.startZone = zs && typeof zs.index === 'number' ? zs.index : U.zoneOfDepth(TU.player.state.maxDepth || 0);
       log.loadout = { tape: inv.tape || 0, flexTape: inv.flexTape || 0, glowSticks: inv.glowSticks || 0 };
       if (prev) log.difficulty = prev.difficulty;
       K.run = log;
@@ -717,6 +719,9 @@
       html.push('<div class="ui-choice" id="ui-choice"><p><b>You reached the bottom.</b> ' + K.esc(txt[2]) + ' The water keeps going down past it.</p>' +
         '<button class="ui-btn ui-small" id="ui-btn-endrun">End run</button><button class="ui-btn ui-ghost ui-small" id="ui-btn-keep" style="color:#EAF7F4;border-color:rgba(255,255,255,.3)">Keep diving</button></div>');
     } else html.push('<p style="margin:0 0 6px;font-size:14px;line-height:1.5;color:#2f3833">' + K.esc(txt[2]) + '</p>');
+    // Endless legs (main.js summary): the deepest zone reached and why the shafts above are gone.
+    if (s.maxZoneName && (s.beyond || (s.maxZone || 0) >= 5 || s.endlessRun)) html.push('<p class="ui-endz" style="margin:0 0 6px;font-size:13px;color:#2f3833"><b>Deepest zone:</b> ' + K.esc(s.maxZoneName) + (s.segment ? ' · ring ' + K.esc(s.segment) : '') + '</p>');
+    if (s.endlessNote) html.push('<p class="ui-endnote" id="ui-endnote-' + kind + '" style="margin:0 0 6px;font-size:13px;line-height:1.5;color:#5a3a1c">' + K.esc(s.endlessNote) + '</p>');
     html.push('<div class="ui-slate-grid">' + stats.map(function (r) { return '<div><span>' + r[0] + '</span><strong>' + K.esc(r[1]) + '</strong></div>'; }).join('') + '</div>');
     html.push('<div class="ui-slate-cols"><div><h4>AWARDS</h4>' + aw.map(function (x) { return '<div class="ui-award"><i>' + K.esc(x.icon) + '</i><div><b>' + K.esc(x.name) + '</b><small>' + K.esc(x.line) + '</small></div></div>'; }).join('') + '</div>');
     html.push('<div><h4>PAY</h4>');
@@ -811,8 +816,31 @@
     TU.on('player:tankSwitch', function (e) { msg('TANK ' + (e.from + 1) + ' EMPTY. SWITCHED TO TANK ' + (e.to + 1) + '.', 3); });
     TU.on('player:cut', function (e) { if (!(e && e.injury && /crayfish|lanternjaw|bite|pinch/.test(String(e.injury.source)))) msg('CUT. Tape it before it gets worse.', 3); });
     // Creature attacks (agent B): a short shout, the player module does the damage.
-    var ATTACK_MSG = { pinch: 'PINCHED. Back off the crayfish.', bite: 'BITTEN. Tape it before it gets worse.', shock: 'SHOCKED. Your light is stuttering.', venom: 'VENOM. Your eyes are swimming.', sting: 'STUNG. The jelly did not like the jar.' };
-    TU.on('creature:attack', function (e) { if (K.simulating() && ATTACK_MSG[e.kind]) msg(ATTACK_MSG[e.kind], 3); });
+    var ATTACK_MSG = { pinch: 'PINCHED. Back off the crayfish.', bite: 'BITTEN. Tape it before it gets worse.', shock: 'SHOCKED. Your light is stuttering.', venom: 'VENOM. Your eyes are swimming.', sting: 'STUNG. The jelly did not like the jar.',
+      slash: 'SLASHED', grab: 'GRABBED. Tap A D A D or stab it.', ink: 'INKED. You cannot see.', bump: 'Something big just bumped you.' };
+    // A held diver gets a gnaw 'grab' attack every 1.6 s: only shout GRABBED once per hold.
+    var held = false;
+    TU.on('creature:grab', function () { held = true; if (K.simulating()) msg(ATTACK_MSG.grab, 3); });
+    TU.on('creature:release', function (e) { held = false; if (K.simulating() && e.reason === 'struggle') msg('You kicked free.', 2); else if (K.simulating() && (e.reason === 'hit' || e.reason === 'killed' || e.reason === 'stunned')) msg('It let go.', 2); });
+    TU.on('creature:attack', function (e) {
+      if (!K.simulating() || !ATTACK_MSG[e.kind]) return;
+      if (e.kind === 'grab') { if (held) return; held = true; }
+      msg(ATTACK_MSG[e.kind], 3);
+    });
+    // Predator tells (creatures-predators.js): the warning right before a strike. The first tell of each species
+    // in a run explains what to do; later ones are a short cue (at most one every 4 s). 'circle' is only a sound.
+    var TELL_FIRST = { cenote_bull_shark: 'A shark. When it drops its fins it is about to strike. Dodge sideways.', pale_barracuda: 'Barracuda pack. Watch for the one that goes still.',
+      gulper_eel: 'Something in the wall just opened its mouth.', cave_lurker: 'It hissed at your light.', spider_squid: 'The flashing is speeding up...', the_maw: 'The lights went out. Something huge is coming. Swim sideways!' };
+    var TELL_CUE = { hunch: 'Fins down. DODGE!', chatter: 'Teeth chatter. One is coming!', hiss: 'HISS. It is charging!', flash: 'Flashing fast. Watch your mask!', rumble: 'The water rumbles. SWIM SIDEWAYS!', glorp: 'The wall opens its mouth!' };
+    var toldSp = {}, cueT = -99;
+    TU.on('run:start', function () { toldSp = {}; cueT = -99; });
+    TU.on('creature:tell', function (e) {
+      if (!K.simulating() || e.kind === 'circle') return;
+      var sid = e.speciesId || e.species, t = TU.run ? TU.run.t || 0 : 0;
+      if (sid && TELL_FIRST[sid] && !toldSp[sid]) { toldSp[sid] = true; cueT = t; msg(TELL_FIRST[sid], 3.5); return; }
+      if (t - cueT < 4) return;
+      cueT = t; msg((sid === 'gulper_eel' ? TELL_CUE.glorp : TELL_CUE[e.kind]) || 'Something is about to strike!', 1.8);
+    });
     TU.on('creature:warn', function (e) { if (K.simulating()) msg(e.kind === 'shock' ? 'Something crackles in the dark...' : 'Claws are up. Do not hover.', 2.2); });
     TU.on('player:crushed', function () { msg('CRUSHED', 3); });
     TU.on('cave:collapse', function () { if (K.simulating()) msg('Something collapsed behind you.', 3.5); });

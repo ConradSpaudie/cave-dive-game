@@ -4,8 +4,13 @@ Walks the whole loop the way a player would, with real clicks where it matters:
   title -> story -> "Yes, obviously" (skips the tutorial, pays the $150) -> camp
   -> the practice hole (tutorial flag, Marv tops up air, a death is a rescue) -> back to camp
   -> a purchase at the Gear Tent (tank, mask, lantern) -> loadout (heavy tanks, tight seal mask)
-  -> an easy dive (checks that the loadout and upgrades really changed the diver)
-  -> debug teleport to the bottom -> results -> KEEP DIVING (same cave, endless, no second win)
+  -> a speargun and glow sticks from the Gear Tent, the speargun picked on the Loadout station
+  -> an easy dive (checks that the loadout and upgrades really changed the diver; a new diver's first
+     dive has no predators near the entrance), the light budget, shoot and kill a predator with the
+     speargun, throw a glow stick (key 3), the light budget again
+  -> debug teleport to the bottom -> results -> KEEP DIVING (same run, endless, no second win)
+  -> one descent: the new segment builds and opens, creatures and predators move in, the Beyond zone
+     shows on the HUD, the hologram rebuilds with both rings, the light budget holds
   -> call the dive (an endless finish) -> back to camp
   -> deaths: drowned, bled out, crushed by a rock
   -> reload the page: money, upgrades, logbook and runs are still there.
@@ -65,13 +70,18 @@ KEY_CHECK = """() => {
   // Every key may do only one thing per state. Allowed pairs: E tap (use) and E hold (grab),
   // A/D kick and A/D alternating (tug of war or wiggle), digits 1-2 tape (dive) vs camp stations (camp).
   const b = __debug.TU.player.bindings.filter(x => typeof x === 'object');
-  const ok = { KeyE: ['interact', 'grab'], KeyA: ['swim', 'tug'], KeyD: ['swim', 'tug'], Digit1: ['ductTape', 'station'] };
+  // A/D alternating also struggles free of a predator's hold (the same taps, a different situation).
+  const ok = { KeyE: ['interact', 'grab'], KeyA: ['swim', 'tug', 'struggle'], KeyD: ['swim', 'tug', 'struggle'], Digit1: ['ductTape', 'station'] };
   const by = {}, bad = [];
   b.forEach(x => x.keys.forEach(k => { (by[k] = by[k] || []).push(x.action); }));
   Object.keys(by).forEach(k => { const a = by[k]; if (a.length > 1) { const allow = ok[k] || []; if (!a.every(n => allow.includes(n))) bad.push(k + ':' + a.join('+')); } });
   return { bad, n: b.length, keys: Object.keys(by).sort() };
 }"""
 
+# Light budget (CONTRACT.md section 12, cfg.lights.budget = 14 counting the ambient light): flashlight spot + bounce,
+# lantern, 2 waypoint lights, 2 creature lights, 1 weapon light, 3 glow stick lights, daylight, the cave core light.
+# All of them exist from boot (no shader recompiles mid-dive), so the count is the same before and after a throw.
+LIGHT_BUDGET = 14
 LIGHTS = """() => { let n = 0, sh = 0; __debug.TU.scene.traverse(o => { if (o.isLight) { n++; if (o.castShadow) sh++; } }); return { n, sh }; }"""
 
 
@@ -108,7 +118,8 @@ def main():
         check(not kc["bad"], "no key does two things in one state %r" % kc["bad"])
         click(page, "#ui-btn-controls")
         txt = page.evaluate("document.getElementById('ui-set-body').innerText")
-        for want in ("Flex Tape", "Duct tape", "measure", "lantern", "mask", "waypoint", "wrist", "slate", "Pause", "camp station", "tank", "squeeze"):
+        for want in ("Flex Tape", "Duct tape", "measure", "lantern", "mask", "waypoint", "wrist", "slate", "Pause", "camp station", "tank", "squeeze",
+                     "glow stick", "Fire or attack", "aim", "Reload", "Draw or put away", "knife", "kick free"):
             check(want.lower() in txt.lower(), "controls screen lists: " + want)
         click(page, "#ui-btn-set-close")
 
@@ -163,11 +174,21 @@ def main():
         check(up["tank"] == 2 and up["mask"] == 2 and up["lantern"] == 1 and up["stamina"] == 2, "upgrades bought")
         check(cash1 == cash0 - 300 - 400 - 400 - 250, "money paid for them")
         snap(page, "02_camp_shop")
+        # a speargun with one spear pack, and glow sticks
+        page.evaluate("__debug.TU.uiKit.pay(1000, 0)")
+        click(page, "#ui-st-shop")
+        click(page, "[data-wbuy='speargun']")
+        click(page, "[data-wammo='speargun']")
+        click(page, "[data-con='glowSticks']")
+        w = page.evaluate("__debug.TU.save.data.weapons")
+        check(w["owned"].get("speargun") and w["ammo"]["spears"] >= 1, "speargun and a spear bought %r" % w)
 
         # ---- loadout
         click(page, "#ui-st-loadout")
         click(page, ".ui-tank[data-tank='heavy']")
         click(page, "[data-mask='tight']")
+        click(page, "[data-wpn='speargun']")
+        check(page.evaluate("__debug.TU.weapons.selected()") == "speargun", "speargun picked on the Loadout station")
         lo = page.evaluate("__debug.TU.save.data.loadout")
         check(lo["tank"] == "heavy" and lo["mask"] == "tight" and lo["lantern"] is True, "loadout saved %r" % {k: lo[k] for k in ("tank", "mask", "lantern")})
 
@@ -188,7 +209,43 @@ def main():
         check(abs(d["fov"] - (d["base"] - 4)) < 0.6, "tight seal mask narrows the view by 4 degrees")
         lt = page.evaluate(LIGHTS)
         print("  lights in the cave scene:", lt)
-        check(lt["n"] <= 11 and lt["sh"] <= 1, "few dynamic lights, shadows only from the flashlight")
+        check(lt["n"] <= LIGHT_BUDGET and lt["sh"] <= 1, "at most %d lights (incl. the glow stick and weapon pools), shadows only from the flashlight" % LIGHT_BUDGET)
+        check(page.evaluate("__debug.TU.cfg.lights.budget") == LIGHT_BUDGET, "cfg.lights.budget matches the test")
+        pz = page.evaluate("__debug.TU.creatures.list().filter(c => c.sp.predator && __debug.TU.cave.zoneAt(c.pos).index <= 1).length")
+        check(pz == 0, "a new diver's first easy dive: no predators in the Mouth and the Throat (%d)" % pz)
+        gear = page.evaluate("[__debug.TU.weapons.current(), __debug.TU.player.inventory.glowSticks, __debug.TU.save.data.loadout.glowSticks, __debug.TU.uiKit.data().stock.glowSticks]")
+        check(gear[0] == "speargun" and gear[1] == 4, "the speargun and the 4 bought glow sticks came along (the tent puts them in the loadout) %r" % gear)
+
+        # ---- the speargun against a real predator (a big barracuda, held still so the shot is repeatable)
+        kill = page.evaluate("""() => { const T = __debug.TU, C = T.creatures, P = T.player.state;
+          __debug.teleport('mid', {}); __debug.sim(0.3);
+          let best = 0, by = P.yaw;
+          for (let i = 0; i < 16; i++) { const y = i / 16 * Math.PI * 2, d = new THREE.Vector3(-Math.sin(y), 0, -Math.cos(y)); const r = T.cave.raycast(P.pos, d, 30); if (r > best) { best = r; by = y; } }
+          T.player.look(by, 0); __debug.sim(0.3);
+          C.list().forEach(c => { if (c.sp.predator && c.pos.distanceTo(P.pos) < 60) c.gone = true; });
+          window.__kills = []; T.on('creature:killed', e => window.__kills.push(e.speciesId + ':' + e.by));
+          const b = C.debugSpawnPredator('pale_barracuda', Math.min(4, best - 1.2), { still: true, n: 1, sizeU: 1 });
+          if (!b) return { err: 'no spawn' };
+          const c = C.get(b.id); __debug.lookAt(c.pos); __debug.sim(0.1);
+          T.weapons.draw(); __debug.sim(1.2);
+          T.weapons.debug.setAim(true); __debug.sim(0.6); __debug.lookAt(c.pos); __debug.sim(0.05);
+          const fired = T.weapons.fire(); __debug.sim(0.8); T.weapons.debug.setAim(false);
+          const i = C.predatorInfo(b.id);
+          return { fired, best: +best.toFixed(1), hp: i ? i.hp : null, maxHp: b.hp, dead: i ? i.dead : null, kills: window.__kills.slice(), spears: T.weapons.ammoOf ? T.weapons.ammoOf('speargun') : null };
+        }""")
+        print("  speargun vs barracuda:", kill)
+        check(kill.get("fired") and kill.get("dead") and any(k.startswith("pale_barracuda") for k in kill.get("kills", [])), "the speargun shoots and kills a predator")
+        snap(page, "03b_speargun_kill")
+
+        # ---- a glow stick (key 3, real key press) and the light budget with it lit
+        page.evaluate("(() => { __debug.TU.weapons.holster(true); window.__glow = []; __debug.TU.on('glowstick:throw', e => window.__glow.push(e.left)); })()")
+        page.keyboard.press("Digit3")
+        gs = page.evaluate("__debug.sim(2); [window.__glow, __debug.TU.glowsticks.count(), __debug.TU.player.inventory.glowSticks, __debug.TU.glowsticks.lights().filter(L => L.owner).length]")
+        print("  glow stick:", gs)
+        check(len(gs[0]) == 1 and gs[1] == 1 and gs[2] == 3 and gs[3] == 1, "key 3 throws a glow stick, it is used up and gets a pooled light")
+        lt = page.evaluate(LIGHTS)
+        check(lt["n"] <= LIGHT_BUDGET, "light budget with a lit glow stick and the weapon light: %d <= %d" % (lt["n"], LIGHT_BUDGET))
+        snap(page, "03c_glow_stick")
         gw = page.evaluate("""() => { const T = __debug.TU, list = T.creatures.list().filter(c => c.speciesId === 'starlight_glowworm');
           return { n: list.length, dry: list.filter(c => T.cave.isDry(c.pos.clone().add(new THREE.Vector3(0, -0.15, 0)))).length, chambers: (T.cave.features.dryChambers || []).length }; }""")
         print("  glowworms:", gw)
@@ -226,6 +283,27 @@ def main():
         check(page.evaluate("__debug.TU.run.seed") == sm["seed"], "keep diving stays in the same cave")
         st = page.evaluate("__debug.lookAtCore(); __debug.sim(3, ['KeyW'])")
         check(st["state"] == "dive", "no second win at the bottom in endless mode")
+        # ---- one descent into a new segment
+        t1 = time.time()
+        while page.evaluate("__debug.TU.cave.endless.building()") and time.time() - t1 < 300:
+            page.evaluate("__debug.sim(0.5)")
+            page.wait_for_timeout(100)
+        check(not page.evaluate("__debug.TU.cave.endless.building()") and page.evaluate("__debug.TU.cave.features.bottom.segment") == 1, "the new segment built and opened (%.0f s)" % (time.time() - t1))
+        seg = page.evaluate("""() => { const T = __debug.TU, C = T.creatures;
+          __debug.teleport('segStart', {}); __debug.sim(1);
+          const z = T.cave.zoneAt(T.player.state.pos), list = C.list().filter(c => !c.gone && c.seg === 1);
+          T.uiKit.wrist.set(true); __debug.sim(0.3); const holo = T.uiKit.wrist.info(); T.uiKit.wrist.set(false);
+          return { zone: z.index, name: z.name, hud: document.getElementById('ui-zonen').textContent, stats: C.segmentStats(), inSeg: list.length,
+                   preds: list.filter(c => c.sp.predator).length, holo: holo, air: T.player.state.airRate, depth: T.player.state.depth }; }""")
+        print("  new segment:", seg)
+        check(seg["zone"] >= 5 and seg["hud"] == seg["name"].upper(), "the HUD shows the Beyond zone (%s)" % seg["hud"])
+        check(seg["stats"]["spawned"] > 0 and seg["inSeg"] > 0 and seg["preds"] >= 1, "creatures and predators moved into the new segment")
+        check(seg["holo"]["built"] and seg["holo"]["rings"] >= 2, "the hologram rebuilt with both Ancient Rings")
+        lt = page.evaluate(LIGHTS)
+        check(lt["n"] <= LIGHT_BUDGET, "light budget in the endless segment: %d <= %d" % (lt["n"], LIGHT_BUDGET))
+        dm = page.evaluate("[__debug.TU.cfg.air.depthMax, Math.min(1 + __debug.TU.player.state.depth / __debug.TU.cfg.air.depthPer, __debug.TU.cfg.air.depthMax)]")
+        check(dm[0] == 2.5 and dm[1] <= 2.5, "the depth air factor is capped at 2.5x (%r at %.0f m)" % (dm, seg["depth"]))
+        snap(page, "04b_new_segment")
         page.keyboard.press("Escape")
         check(state(page) == "paused", "Esc pauses the endless leg")
         click(page, "#ui-btn-quit")

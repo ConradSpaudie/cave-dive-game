@@ -73,7 +73,7 @@
     raised: false, sticky: false, tabAt: 0,
     renderer: null, scene: null, camera: null, failed: false,
     mapObj: null, mapSegs: [], exploredAttr: null, segExplored: null, mapCenter: null, mapRadius: 40, mapBuilt: false,
-    ropeLine: null, you: null, wpSprites: [], ringObjs: [], rings: [],
+    ropeLine: null, you: null, wpSprites: [], ringObjs: [], rings: [], md: null, ringSprites: [], stickSprites: [], stickT: 0,
     yaw: 0, pitch: 0.75, dist: 60, target: null, drag: false, keys: {}, sel: 0,
     visited: [], visitT: 0, lastDepth: 0, ascent: 0, ropeT: 0, labelT: 0
   };
@@ -125,7 +125,8 @@
   }
   function readMap() {
     var segs = [];
-    if (typeof TU.cave.mapData === 'function') { try { segs = normalize(TU.cave.mapData()); } catch (e) { console.error('[TU] cave.mapData failed', e); segs = []; } }
+    W.md = null;
+    if (typeof TU.cave.mapData === 'function') { try { W.md = TU.cave.mapData(); segs = normalize(W.md); } catch (e) { console.error('[TU] cave.mapData failed', e); segs = []; W.md = null; } }
     if (!segs.length) segs = sampleSpots();
     return segs;
   }
@@ -157,6 +158,8 @@
     var T = THREE;
     disposeObj(W.mapObj); W.mapObj = null;
     W.ringObjs.forEach(disposeObj); W.ringObjs = []; W.rings = [];
+    W.ringSprites.forEach(disposeObj); W.ringSprites = [];
+    var keepDist = W.keepZoom ? W.dist : null; W.keepZoom = false;
     var segs = W.mapSegs = readMap();
     W.segExplored = new Uint8Array(segs.length);
     var pos = [], aE = [], aK = [], owner = [];
@@ -190,7 +193,7 @@
     if (!segs.length) { mn = { x: -20, y: -40, z: -60 }; mx = { x: 20, y: 0, z: 0 }; }
     W.mapCenter = { x: (mn.x + mx.x) / 2, y: (mn.y + mx.y) / 2, z: (mn.z + mx.z) / 2 };
     W.mapRadius = Math.max(15, Math.hypot(mx.x - mn.x, mx.y - mn.y, mx.z - mn.z) / 2);
-    W.dist = clamp(W.mapRadius * 0.45, 18, 90); // start close: the explored part is around you
+    W.dist = keepDist != null ? keepDist : clamp(W.mapRadius * 0.45, 18, 90); // start close: the explored part is around you (a rebuild keeps your zoom)
     if (pos.length) {
       var g = new T.BufferGeometry();
       g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
@@ -200,13 +203,22 @@
       var mat = new T.ShaderMaterial({ uniforms: { uCol: { value: new T.Color(0x4FF2D0) }, uOp: { value: 0.9 } }, vertexShader: VS, fragmentShader: FS, transparent: true, depthWrite: false, blending: T.AdditiveBlending });
       W.mapObj = new T.LineSegments(g, mat); W.mapObj.frustumCulled = false; W.scene.add(W.mapObj);
     }
-    // depth rings at the zone boundaries inside the map's depth range
-    [20, 60, 120, 200].forEach(function (d) {
+    // depth rings at the zone boundaries inside the map's depth range (plus the Beyond zones of endless segments)
+    var md = W.md || {}, bounds = [[20], [60], [120], [200]];
+    (md.zones || []).forEach(function (zn) { if (zn && zn.topM > 200 && !bounds.some(function (b) { return Math.abs(b[0] - zn.topM) < 1; })) bounds.push([Math.round(zn.topM), zn.name]); });
+    bounds.forEach(function (bd) {
+      var d = bd[0];
       if (-d > mx.y + 5 || -d < mn.y - 5) return;
       var pts = []; for (var i = 0; i <= 64; i++) { var a = i / 64 * Math.PI * 2; pts.push(new T.Vector3(W.mapCenter.x + Math.cos(a) * W.mapRadius * 0.9, -d, W.mapCenter.z + Math.sin(a) * W.mapRadius * 0.9)); }
       var ring = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineDashedMaterial({ color: 0x2BB8C9, transparent: true, opacity: 0.45, dashSize: 2, gapSize: 2, blending: T.AdditiveBlending, depthWrite: false }));
       ring.computeLineDistances(); W.scene.add(ring); W.ringObjs.push(ring);
-      W.rings.push({ d: d, pos: new T.Vector3(W.mapCenter.x + W.mapRadius * 0.9, -d, W.mapCenter.z), name: U.ZONE_NAMES[U.zoneOfDepth(d)] });
+      W.rings.push({ d: d, pos: new T.Vector3(W.mapCenter.x + W.mapRadius * 0.9, -d, W.mapCenter.z), name: bd[1] || U.ZONE_NAMES[U.zoneOfDepth(d)], beyond: !!bd[1] });
+    });
+    // the Ancient Rings (one per live segment): gold markers
+    (md.rings || []).forEach(function (r) {
+      var p = P3(r && r.pos); if (!ok(p)) return;
+      var sp = new T.Sprite(new T.SpriteMaterial({ map: TU.tex.get('glow'), color: 0xFFD27A, transparent: true, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
+      sp.position.set(p.x, p.y, p.z); sp.scale.setScalar(5); sp.userData.ring = r.segment != null ? r.segment : 0; W.scene.add(sp); W.ringSprites.push(sp);
     });
     W.mapBuilt = true;
     W.visited.forEach(reveal);
@@ -271,7 +283,7 @@
     }
     K.emit('wrist', { raised: on });
   }
-  K.wrist = { set: function (on, sticky) { setRaised(on); W.sticky = !!(on && sticky); }, raised: function () { return W.raised; }, rebuild: function () { W.mapBuilt = false; if (W.raised) buildMap(); }, explored: explorePct, view: function (yaw, pitch, dist) { if (yaw != null) W.yaw = yaw; if (pitch != null) W.pitch = pitch; if (dist != null) W.dist = dist; } };
+  K.wrist = { set: function (on, sticky) { setRaised(on); W.sticky = !!(on && sticky); }, raised: function () { return W.raised; }, rebuild: function () { if (W.mapBuilt) W.keepZoom = true; W.mapBuilt = false; if (W.raised) buildMap(); }, explored: explorePct, view: function (yaw, pitch, dist) { if (yaw != null) W.yaw = yaw; if (pitch != null) W.pitch = pitch; if (dist != null) W.dist = dist; } };
 
   function bindInput() {
     // Capture phase so these keys do not also turn the view (player.js listens later, on window bubble).
@@ -395,8 +407,33 @@
       W.ropeLine.geometry.setDrawRange(0, n + 1); W.ropeLine.geometry.attributes.position.needsUpdate = true;
       syncWaypoints();
     }
+    // glow sticks (live list, they sink and settle): small colored markers that fade with the stick
+    W.stickT -= dt;
+    if (W.stickT <= 0) { W.stickT = 0.2; syncSticks(); }
+    var sc = Math.max(0.6, W.dist / 60);
+    W.stickSprites.forEach(function (s) { s.scale.setScalar(1.4 * sc); });
+    W.ringSprites.forEach(function (s) { s.scale.setScalar((4 + Math.sin(performance.now() * 0.002) * 0.6) * sc); });
     W.renderer.render(W.scene, W.camera);
     labels(w, h);
+  }
+  function stickList() {
+    if (TU.glowsticks && typeof TU.glowsticks.list === 'function') { try { return TU.glowsticks.list() || []; } catch (e) { return []; } }
+    return (W.md && W.md.glowSticks) || [];
+  }
+  function syncSticks() {
+    if (!W.scene) return;
+    var T = THREE, list = stickList();
+    while (W.stickSprites.length > list.length) disposeObj(W.stickSprites.pop());
+    while (W.stickSprites.length < list.length) {
+      var s = new T.Sprite(new T.SpriteMaterial({ map: TU.tex.get('dot'), color: 0x7CFF6B, transparent: true, blending: T.AdditiveBlending, depthWrite: false, depthTest: false }));
+      W.scene.add(s); W.stickSprites.push(s);
+    }
+    list.forEach(function (g, i) {
+      var p = P3(g.pos), sp = W.stickSprites[i]; if (!ok(p)) { sp.visible = false; return; }
+      sp.visible = true; sp.position.set(p.x, p.y, p.z);
+      if (typeof g.color === 'number') sp.material.color.setHex(g.color);
+      sp.material.opacity = clamp(g.brightness != null ? 0.25 + 0.75 * g.brightness : 1, 0.15, 1);
+    });
   }
   function project(p, w, h) {
     var v = (tmpV || (tmpV = new THREE.Vector3())).set(p.x, p.y, p.z).project(W.camera);
@@ -405,7 +442,8 @@
   }
   function labels(w, h) {
     var el = $('ui-holo-labels'), html = '', P = TU.player.state, s;
-    W.rings.forEach(function (r) { s = project(r.pos, w, h); if (s) html += '<span class="ui-ring" style="left:' + s.x.toFixed(0) + 'px;top:' + s.y.toFixed(0) + 'px">' + r.d + ' m</span>'; });
+    W.rings.forEach(function (r) { s = project(r.pos, w, h); if (s) html += '<span class="ui-ring" style="left:' + s.x.toFixed(0) + 'px;top:' + s.y.toFixed(0) + 'px">' + r.d + ' m' + (r.beyond ? ' · ' + K.esc(String(r.name).toUpperCase()) : '') + '</span>'; });
+    W.ringSprites.forEach(function (sp) { s = project(sp.position, w, h); if (s) html += '<span class="ui-ring" style="left:' + s.x.toFixed(0) + 'px;top:' + s.y.toFixed(0) + 'px;color:#FFD27A">RING' + (sp.userData.ring ? ' ' + sp.userData.ring : '') + '</span>'; });
     wpList().forEach(function (wp, i) { if (!wp.pos) return; s = project(wp.pos, w, h); if (s) html += '<span class="' + (i === W.sel ? 'ui-wsel' : '') + '" style="left:' + s.x.toFixed(0) + 'px;top:' + s.y.toFixed(0) + 'px">' + K.esc(wp.name) + '</span>'; });
     s = project(P.pos, w, h); if (s) html += '<span class="ui-you" style="left:' + s.x.toFixed(0) + 'px;top:' + s.y.toFixed(0) + 'px">YOU</span>';
     el.innerHTML = html;
@@ -413,13 +451,18 @@
     var ie = $('ui-holo-info'); if (ie.innerHTML !== info) ie.innerHTML = info;
   }
 
+  // Endless depth: a new segment opened (or the oldest was freed). Rebuild the map now if the wrist is up, else on the next raise.
+  TU.on('cave:segment', function (e) { if (e && (e.state === 'open' || e.state === 'freed')) K.wrist.rebuild(); });
+  // Debug and tests: what the hologram shows right now.
+  K.wrist.info = function () { return { built: W.mapBuilt, segs: W.mapSegs.length, rings: W.ringSprites.length, sticks: W.stickSprites.filter(function (s) { return s.visible; }).length, zoneRings: W.rings.map(function (r) { return r.d; }) }; };
+
   TU.define('ui', { setWrist: function (on) { K.wrist.set(on, true); }, wristRaised: function () { return W.raised; } });
 
   K.part('wrist', {
     init: function () { buildDom(); bindInput(); },
     reset: function () {
-      setRaised(false); W.visited = []; W.mapBuilt = false; W.sel = 0; W.ascent = 0; W.lastDepth = 0; W.visitT = 0;
-      if (W.scene) { W.wpSprites.forEach(disposeObj); W.wpSprites = []; }
+      setRaised(false); W.visited = []; W.mapBuilt = false; W.keepZoom = false; W.sel = 0; W.ascent = 0; W.lastDepth = 0; W.visitT = 0;
+      if (W.scene) { W.wpSprites.forEach(disposeObj); W.wpSprites = []; W.stickSprites.forEach(disposeObj); W.stickSprites = []; }
     },
     state: function (e) { if (e.to !== 'dive' && e.to !== 'tutorial' && e.to !== 'paused') setRaised(false); if (e.to === 'paused' && W.raised) { $('ui-wrist').classList.remove('ui-on'); } if (e.to === 'dive' && W.raised) $('ui-wrist').classList.add('ui-on'); },
     update: update,

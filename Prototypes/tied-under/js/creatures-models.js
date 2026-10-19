@@ -671,4 +671,6 @@
 
   L.models = M;
   L.rnd = rnd;
+  // The fish builders, shared with creatures-pred-models.js (the predators).
+  L.kit2 = { fish: fish, fishR: fishR, barbel: barbel, cones: cones, eel: eel, A: A, B: B };
 })();

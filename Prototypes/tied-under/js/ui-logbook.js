@@ -48,6 +48,16 @@
   });
   var BOUNTY = { common: 25, uncommon: 60, rare: 150, very_rare: 400, legendary: 1000 };
   K.BOUNTY = BOUNTY;
+  // Bounty for a species: the rarity price times 1 + 0.5 per danger point (the same rule creatures.js uses: a danger 4 shark pays x3).
+  function bountyOf(sp) { var b = BOUNTY[(sp && sp.rarity) || 'common'] || 25, dg = sp && typeof sp.danger === 'number' ? sp.danger : 0; return Math.round(b * (1 + 0.5 * dg)); }
+  K.bountyOf = bountyOf;
+  // Danger rating 0..5 as skulls (filled for the rating, faint for the rest). Only shown for species that can hurt you.
+  function dangerHTML(sp) {
+    var dg = sp && typeof sp.danger === 'number' ? Math.max(0, Math.min(5, Math.round(sp.danger))) : 0;
+    if (!dg) return '';
+    var out = ''; for (var i = 0; i < 5; i++) out += '<i' + (i < dg ? '' : ' class="ui-dz"') + '>\u2620</i>';
+    return '<small class="ui-danger" title="Danger ' + dg + ' of 5">DANGER ' + out + '</small>';
+  }
 
   // Species lookup: creatures.js data first, the fallback catalog fills the gaps.
   K.species = function (id) {
@@ -135,6 +145,9 @@
     '.ui-sp.ui-unk b{color:#7a7262}',
     '.ui-sp .ui-shiny{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:#E6B23A;color:#3b2a00;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 0 rgba(0,0,0,.25)}',
     '.ui-sp .ui-rar{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;color:#8a806c}',
+    '.ui-sp .ui-danger{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;color:#9a2a1f}',
+    '.ui-sp .ui-danger i{font-style:normal;font-size:12px;letter-spacing:0;margin-left:1px}',
+    '.ui-sp .ui-danger i.ui-dz{opacity:.22}',
     '.ui-book-empty{font-family:var(--ui-hand);font-size:24px;color:#5a5345;padding:12px 0}',
     /* in-dive slate */
     '#ui-slate{position:fixed;right:calc(var(--gr) + 8px);top:50%;transform:translateY(-50%) rotate(1.2deg);z-index:4;width:min(400px, calc(100% - 32px));max-height:calc(100% - 120px);overflow:auto;display:none;',
@@ -159,9 +172,9 @@
     var e = TU.logbook.get(sp.id), found = !!e, z = (sp.zones && sp.zones[0]) || 0;
     var shiny = e && (e.shiny || e.shinies > 0);
     var rar = String(sp.rarity || 'common').replace('_', ' ').toUpperCase();
-    if (!found) return '<div class="ui-sp ui-unk">' + sketchSVG(sp.id, false) + '<b>???</b><small>' + U.ZONE_NAMES[z] + '</small><small class="ui-rar">' + rar + ' · BOUNTY ' + K.money(BOUNTY[sp.rarity] || 25) + '</small></div>';
+    if (!found) return '<div class="ui-sp ui-unk">' + sketchSVG(sp.id, false) + '<b>???</b><small>' + U.ZONE_NAMES[z] + '</small>' + dangerHTML(sp) + '<small class="ui-rar">' + rar + ' · BOUNTY ' + K.money(bountyOf(sp)) + '</small></div>';
     var best = e.maxSizeM != null ? K.cm(e.maxSizeM) : 'not measured';
-    return '<div class="ui-sp">' + (shiny ? '<span class="ui-shiny" title="Shiny">★</span>' : '') + sketchSVG(sp.id, true) + '<b>' + K.esc(sp.name) + '</b><small>' + U.ZONE_NAMES[z] + (sp.glows ? ' · glows' : '') + '</small><small>Best size: <b style="display:inline;font-size:18px">' + best + '</b></small><small>Logged ' + e.count + 'x' + (e.photos ? ' · ' + e.photos + ' photo' + (e.photos > 1 ? 's' : '') : '') + '</small><small class="ui-rar">' + rar + '</small></div>';
+    return '<div class="ui-sp">' + (shiny ? '<span class="ui-shiny" title="Shiny">★</span>' : '') + sketchSVG(sp.id, true) + '<b>' + K.esc(sp.name) + '</b><small>' + U.ZONE_NAMES[z] + (sp.glows ? ' · glows' : '') + '</small><small>Best size: <b style="display:inline;font-size:18px">' + best + '</b></small><small>Logged ' + e.count + 'x' + (e.photos ? ' · ' + e.photos + ' photo' + (e.photos > 1 ? 's' : '') : '') + (e.specimens ? ' · ' + e.specimens + ' specimen' + (e.specimens > 1 ? 's' : '') : '') + '</small>' + dangerHTML(sp) + '<small class="ui-rar">' + rar + ' · BOUNTY ' + K.money(bountyOf(sp)) + '</small></div>';
   }
   function renderBook(root) {
     var list = allSpecies(), have = list.filter(function (s) { return TU.logbook.has(s.id); }).length;

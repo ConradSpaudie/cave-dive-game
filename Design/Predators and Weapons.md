@@ -40,6 +40,10 @@ Existing hazards (Lanternjaw, Volt Eel, crayfish) now also have health and can b
 - Sprint is now stronger kicks at a slightly faster pace instead of much faster kicks.
 
 ## Status
-Being built into the browser version (Prototypes/tied-under). For the Unreal version these become their own systems after Phase 2 (co-op).
+Built and live in the browser version (Prototypes/tied-under) as of Oct 19.
+- Balance: predator health is doubled to match weapon damage (shark 110, barracuda 20, gulper 70, lurker 140, squid 44, The Maw 520). The free pole spear kills a shark in 3 to 4 hits.
+- Rookie grace: no predators in the tutorial, and no predators in the first two zones until you finish one dive (easy and standard). Hard has no grace.
+- Being grabbed: kicks drop to a quarter; mash A and D to break free.
+- Glow sticks (key 3) and true endless depth (Keep Diving opens new cave below the ring: The Hollow, The Root, and deeper) are also in. For the Unreal version these become their own systems after Phase 2 (co-op).
 
 Related: [[Creatures, Flora and Logbook]], [[Logbook Species List]], [[Diving Systems]], [[Gear and Customization]], [[Economy and Progression]]

@@ -96,10 +96,12 @@
     for (var i = 0; i <= R; i++) {
       var u = i / R, z = z0 + (z1 - z0) * u, r = Math.max(o.r(u), 0.0004);
       var w = o.w ? o.w(u) : 1, h = o.h ? o.h(u) : 1, yo = o.y ? o.y(u) : 0, xo = o.x ? o.x(u) : 0;
+      // flatBelly / flatTop squash the lower / upper half (a number or a function of u). Used for skulls and jaws.
+      var fb = typeof o.flatBelly === 'function' ? o.flatBelly(u) : o.flatBelly, ft = typeof o.flatTop === 'function' ? o.flatTop(u) : o.flatTop;
       for (var j = 0; j <= S; j++) {
         var th = j / S * Math.PI * 2, cx = Math.cos(th), sy = Math.sin(th);
         var ex = Math.sign(cx) * Math.pow(Math.abs(cx), 2 / sq), ey = Math.sign(sy) * Math.pow(Math.abs(sy), 2 / sq);
-        var yy = ey * r * h; if (o.flatBelly && yy < 0) yy *= o.flatBelly;
+        var yy = ey * r * h; if (fb && yy < 0) yy *= fb; if (ft && yy > 0) yy *= ft;
         pos.push(xo + ex * r * w, yo + yy, z); uvs.push(j / S, u);
       }
     }
@@ -232,11 +234,13 @@
     '  if (aA.y > 0.0) p += aB.xyz * aA.y * uFlut.y * sin(ph * uFlut.x + aA.w + position.z * 5.0);',
     '  else if (aA.y < 0.0) p += aB.xyz * (-aA.y) * act;',
     '  if (uMode < 0.5) {',
-    // fish: hinged jaw opens with the action value
-    '    if (aA.z > 0.0) crHinge(p, n, aA.z * act * uHinge.w);',
+    // fish: hinged jaw opens with the action value (a negative weight swings the other way: squid arms spreading down)
+    '    if (aA.z != 0.0) crHinge(p, n, aA.z * act * uHinge.w);',
     '  } else if (uMode < 1.5) {',
-    // crawlers: legs swing forward and back and lift on the return stroke (metachronal wave by phase offset)
+    // crawlers: legs swing forward and back and lift on the return stroke (metachronal wave by phase offset).
+    // A negative weight is a jaw instead of a leg (the Cave Lurker opens its mouth while it walks).
     '    if (aA.z > 0.0) { float lp = ph * uFlut.z + aA.w; p.z += aA.z * sin(lp) * uFlut.w; p.y += aA.z * max(0.0, cos(lp)) * uFlut.w * 0.6; }',
+    '    else if (aA.z < 0.0) crHinge(p, n, -aA.z * act * uHinge.w);',
     '  }',
     '  if (uMode < 1.5) {',
     // traveling body wave: amplitude grows toward the tail (carangiform) or is even (anguilliform)
@@ -292,11 +296,11 @@
   //      hinge: [x, y, z, maxAngle], glow: hex, sss: hex, sssK, rough, opacity, emissive: hex, metal }
   L.makeMaterial = function (kind, o) {
     o = o || {};
-    var fin = kind === 'fin';
+    var fin = kind === 'fin', see = fin && !(o.opacity >= 1); // fins with opacity 1 are solid but still two sided (shark fins)
     var m = new T.MeshStandardMaterial({
       vertexColors: true, roughness: o.rough == null ? (fin ? 0.4 : 0.5) : o.rough, metalness: o.metal || 0,
-      transparent: fin, opacity: fin ? (o.opacity == null ? 0.55 : o.opacity) : 1, side: fin ? T.DoubleSide : T.FrontSide,
-      depthWrite: !fin, emissive: new T.Color(o.emissive || 0x000000)
+      transparent: see, opacity: see ? (o.opacity == null ? 0.55 : o.opacity) : 1, side: fin ? T.DoubleSide : T.FrontSide,
+      depthWrite: !see, emissive: new T.Color(o.emissive || 0x000000)
     });
     var w = o.wave || [0, 1, 2, 0], f = o.flut || [0, 0, 0, 0], h = o.hinge || [0, 0, 0, 0];
     var sss = lin(o.sss == null ? 0xffffff : o.sss).multiplyScalar(o.sssK == null ? 0.35 : o.sssK);

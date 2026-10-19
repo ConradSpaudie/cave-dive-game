@@ -308,8 +308,12 @@
   function toWorld(out, camPt) { return out.copy(camPt).applyQuaternion(TU.camera.quaternion).add(TU.camera.position); }
 
   var W = { measure: 0, stroke: 0, crawl: 0, squeeze: 0, walk: 0, rag: 0, grab: 0, inflate: 0, wrist: 0, tape: 0, mask: 0, lantern: 0, climb: 0, aim: 1 };
+  // Arm stroke tempo: normal seconds per stroke, and the most sprinting may speed it up.
+  var STROKE_BASE_PERIOD = 0.82, STROKE_MAX_SPEEDUP = 1.25;
+  var strokeRate = 1 / STROKE_BASE_PERIOD, strokePhaseFix = 0;
   var strokeT = 0, lastKick = 0, lastPull = 0, pullSide = 0, ragSeed = 0, lastRunT = null, lastRunTWasNull = true;
   var pBase = { R: newPose(), L: newPose() }, pTmp = newPose(), pOv = newPose();
+  var wpn = null; // this frame's weapon hold from TU.weapons.pose() (null when no weapon is out)
 
   function poseFor(A, dt) {
     var P = TU.player.state, AN = P.anim, sx = A.sx, side = A.side, o = A.target, t = time;
@@ -326,7 +330,9 @@
     if (W.stroke > 0.01) {
       strokePose(pTmp, strokeT + (side === 'L' ? 0.0 : 0.0));
       if (side === 'L') mirror(pTmp);
-      blendPose(o, pTmp, W.stroke * (leftLight ? 0.4 : 0.85));
+      // a hand holding a weapon only follows a little of the stroke (it keeps the weapon pointed ahead)
+      var holdW = side === 'R' && wpn ? 1 - 0.85 * wpn.w : 1;
+      blendPose(o, pTmp, W.stroke * (leftLight ? 0.4 : 0.85) * holdW);
       if (leftLight) { o.f.lerp(V(0.02, 0.08, -1), 0.6).normalize(); o.curl = lerp(o.curl, 0.86, 0.8); }
     }
     // ---- crawl: pull along the rock, hands planted in the world ----
@@ -360,6 +366,18 @@
       if (leftLight) setP(pTmp, -0.2, -0.2 + Math.abs(sw) * 0.01, -0.46, 0.0, 0.0, -1, 0, 1, 0, 0.86, 0, 0.7);
       else { setP(pTmp, 0.25, -0.28 + Math.abs(sw) * 0.015, -0.4 + sw * 0.06, 0.1, -0.55, -0.83, 0.95, 0.25, 0.05, 0.45); if (side === 'L') mirror(pTmp); }
       blendPose(o, pTmp, W.walk);
+    }
+    // ---- weapon held in the right hand (weapons.js says where: hip, aimed, firing, reloading) ----
+    // The left hand keeps the torch, except when weapons.js asks for help (loading a speargun).
+    if (wpn && wpn.w > 0.01) {
+      var wp = side === 'R' ? wpn : wpn.left;
+      if (wp && (wp.w == null || wp.w > 0.01)) {
+        setP(pOv, wp.p.x, wp.p.y, wp.p.z, wp.f.x, wp.f.y, wp.f.z, wp.u.x, wp.u.y, wp.u.z, wp.curl, wp.spread || 0, wp.thumb == null ? wp.curl : wp.thumb);
+        // the swim rhythm still rocks the weapon a little (kicks move the whole body)
+        var bobW = W.stroke * (1 - 0.7 * (wpn.steady || 0));
+        pOv.p.y += Math.sin(strokeT * Math.PI * 2) * 0.012 * bobW; pOv.p.x += Math.sin(strokeT * Math.PI * 2 + 1.2) * 0.008 * bobW;
+        blendPose(o, pOv, wpn.w * (wp.w == null ? 1 : wp.w));
+      }
     }
     // ---- action overlays ----
     if (side === 'R') {
@@ -446,6 +464,7 @@
     o.curl = damp(o.curl, t.curl, 10, dt); o.spread = damp(o.spread, t.spread, 10, dt); o.thumb = damp(o.thumb, t.thumb, 10, dt);
     // shaky hands: panic, cold, shocks, quakes
     var sh = 0.0012 + smooth(40, 100, P.panic) * 0.006 + (P.cold || 0) * 0.004 + (P.shock || 0) * 0.02 + (P.quake || 0) * 0.006;
+    if (A.side === 'R' && wpn) sh *= 1 - 0.6 * (wpn.steady || 0) * wpn.w; // aiming (right mouse) steadies the weapon hand
     var wr = tmp3.copy(o.p);
     wr.x += N.n3(time * 11, A.sx * 3, 1) * sh; wr.y += N.n3(time * 12, A.sx * 5, 2) * sh; wr.z += N.n3(time * 10, A.sx * 7, 3) * sh * 0.6;
     var wrist = A.wristPos || (A.wristPos = V(0, 0, 0)); wrist.copy(wr);
@@ -543,9 +562,20 @@
     time += dt;
     var P = TU.player.state, AN = P.anim, mode = P.mode;
     if (TU.state.is('paused')) dt = 0.0001;
-    // ---- stroke clock synced to kicks ----
-    if (AN.kickCount !== lastKick) { lastKick = AN.kickCount; strokeT = 0; }
-    strokeT += dt / Math.max(0.3, AN.kickInterval || 0.82);
+    // ---- stroke clock: a steady rhythm that follows the kicks without snapping ----
+    // The arms keep their own smooth tempo. Sprinting speeds it up a little (at most
+    // STROKE_MAX_SPEEDUP times the normal pace), and each kick only nudges the phase
+    // toward the start of a stroke instead of restarting it, so nothing jerks.
+    var period = Math.max(STROKE_BASE_PERIOD / STROKE_MAX_SPEEDUP, AN.kickInterval || STROKE_BASE_PERIOD);
+    strokeRate = damp(strokeRate, 1 / period, 1.5, dt);
+    if (AN.kickCount !== lastKick) {
+      lastKick = AN.kickCount;
+      var ph = strokeT % 1, err = ph > 0.5 ? 1 - ph : -ph; // how far the arms are from a stroke start
+      strokePhaseFix = err * 0.6;                        // close most of the gap over the next moment
+    }
+    var fix = strokePhaseFix * Math.min(1, dt * 3); strokePhaseFix -= fix;
+    strokeT += dt * strokeRate + fix;
+    if (strokeT < 0) strokeT += 1;
     if (strokeT > 1) strokeT = AN.intent ? strokeT % 1 : 1;
     // ---- crawl pulls: alternate hands each pull ----
     if (AN.pullCount !== lastPull) {
@@ -576,8 +606,16 @@
     if (tg.rag) { tg.grab = tg.inflate = tg.wrist = tg.tape = tg.mask = tg.climb = tg.measure = 0; }
     for (var k in tg) W[k] = damp(W[k], tg[k], k === 'rag' ? 10 : k === 'stroke' ? 4 : 7, dt);
     if (tg.rag && !ragSeed) ragSeed = 1 + Math.random() * 50; if (!tg.rag) ragSeed = 0;
+    wpn = null;
+    try { wpn = TU.weapons && typeof TU.weapons.pose === 'function' ? TU.weapons.pose() : null; } catch (e) { wpn = null; }
+    if (wpn && !(wpn.w > 0.001)) wpn = null;
     poseFor(hands.R, dt); poseFor(hands.L, dt);
     placeArm(hands.R, dt); placeArm(hands.L, dt);
+    // where each hand is (camera space) so weapons.js can put the weapon in the right fist
+    var rg = TU.player.rig || (TU.player.rig = { lampPos: V(0, 0, 0), lampDir: V(0, 0, -1), lanternPos: null });
+    if (!rg.rHandPos) { rg.rHandPos = V(0, 0, 0); rg.rHandQuat = new T.Quaternion(); rg.lHandPos = V(0, 0, 0); rg.lHandQuat = new T.Quaternion(); }
+    rg.rHandPos.copy(hands.R.hand.group.position); rg.rHandQuat.copy(hands.R.hand.group.quaternion);
+    rg.lHandPos.copy(hands.L.hand.group.position); rg.lHandQuat.copy(hands.L.hand.group.quaternion);
     // ---- props ----
     var L = hands.L, R = hands.R, lamp = TU.player.lamp;
     L.torch.visible = !P.headlamp;

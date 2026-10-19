@@ -107,9 +107,14 @@
         if (a && a.style !== 'none') TU.emit('area:enter', { id: a.id, title: a.title, subtitle: a.subtitle, style: a.style });
       }
     }
-    // Win: touch the thing at the bottom (once per run: in endless mode you keep exploring).
+    // Deepest zone reached this run (0..4 in the first cave, 5+ in the Beyond: endless segments).
+    var zi = TU.cave.zoneAt ? TU.cave.zoneAt(P.pos).index : P.zone;
+    if (zi > (run.maxZone || 0)) run.maxZone = zi;
+    // Win: touch the Ancient Ring at the end of this leg. In endless mode every new segment ends in
+    // another ring (features.bottom.segment is the segment it belongs to; run.endSeg is the goal).
     var bottom = TU.cave.features.bottom;
-    if (!run.endless && !run.tutorial && bottom && P.pos.distanceTo(bottom.pos) < bottom.radius) TU.game.endRun({ won: true, reason: 'bottom' });
+    var goal = bottom && (bottom.segment || 0) === (run.endSeg || 0) && (!run.endless || run.endSeg > 0);
+    if (goal && !run.tutorial && P.pos.distanceTo(bottom.pos) < bottom.radius) TU.game.endRun({ won: true, reason: 'bottom' });
   }
   // Deaths. In the practice hole Marv pulls you out instead (no fail states in the tutorial).
   function death(reason) {
@@ -136,9 +141,18 @@
       distM: P.dist, waypoints: P.wpCount, siltOuts: P.siltOuts, wallHits: P.wallHits,
       loadout: run.loadout ? run.loadout.tank : null,
       difficulty: run.difficulty || null, tutorial: !!run.tutorial,
-      endless: !!run.endless, leg: run.leg || 1, bottomReached: !!run.bottomReached
+      // endless: true for a leg that ends past a ring without touching a new one (the results screen then
+      // says "past the bottom"). A leg that ends at a new ring in the Beyond is a normal 'bottom'
+      // result with the same END RUN / KEEP DIVING choice; endlessRun says it was still an endless leg.
+      endless: !!run.endless && run.reason !== 'bottom', endlessRun: !!run.endless, leg: run.leg || 1, bottomReached: !!run.bottomReached,
+      // endless mode: the deepest zone (5+ = the Beyond), how many rings deep, and whether the way
+      // back up has collapsed behind you (the results screen can say so)
+      maxZone: run.maxZone || 0, maxZoneName: zoneName(run.maxZone || 0), segment: run.endSeg || 0,
+      beyond: (run.maxZone || 0) >= 5, sealedAbove: (run.endSeg || 0) >= 2,
+      endlessNote: (run.endSeg || 0) >= 2 ? 'Every shaft above the last ring collapsed behind you. Marv had to send the long rope.' : null
     };
   }
+  function zoneName(z) { return TU.cave.zoneName ? TU.cave.zoneName(z) : (TU.util.ZONE_NAMES[z] || ''); }
 
   /* ------------------------------------------------------------------ */
   /* Game flow                                                           */
@@ -153,7 +167,8 @@
       seed: seed, difficulty: difficulty, layout: layout, modifiers: opts.modifiers || [],
       loadout: JSON.parse(JSON.stringify(TU.save.data.loadout)), upgrades: JSON.parse(JSON.stringify(TU.save.data.upgrades)),
       touch: !!opts.touch, tutorial: !!opts.tutorial, startedAt: Date.now(), t: 0, area: null, areasSeen: {},
-      ended: false, won: false, reason: null, endless: false, leg: 1, legStartT: 0, bottomReached: false
+      ended: false, won: false, reason: null, endless: false, leg: 1, legStartT: 0, bottomReached: false,
+      endSeg: 0, maxZone: 0
     };
   }
   TU.define('game', {
@@ -183,16 +198,23 @@
       TU.emit('run:end', { won: run.won, reason: run.reason, summary: s });
       TU.setState(run.won ? 'results' : 'dead', { summary: s });
     },
-    // KEEP DIVING: after the bottom, carry on in the same cave with the same air, rope and kit.
-    // The run is open again (endless): no second win, it ends when you call it or die.
+    // KEEP DIVING: after a ring, carry on with the same air, rope and kit. The floor of the ring
+    // chamber breaks open over the next few seconds (TU.cave.endless) and a new, deeper cave
+    // (a new segment from the run seed + its number) leads down to the next ring. The run is open
+    // again (endless): it ends at the next ring (the same choice), when you call it, or when you die.
     keepDiving: function () {
       var run = TU.run;
       if (!run || !run.ended || !run.won) return false;
       run.ended = false; run.won = false; run.reason = null; run.endless = true;
       run.leg = (run.leg || 1) + 1; run.legStartT = run.t;
+      var next = (run.endSeg || 0) + 1, r = null;
+      if (!run.tutorial && TU.cave.endless && TU.cave.endless.descend) {
+        try { r = TU.cave.endless.descend(next, { seed: run.seed, difficulty: run.difficulty }); } catch (e) { console.error('[TU] endless descend failed', e); r = null; }
+      }
+      if (r && r.ok) run.endSeg = next;
       TU.setState('dive', { run: run, continued: true });
-      TU.emit('run:continue', { run: run, leg: run.leg });
-      TU.emit('ui:msg', { text: 'KEEP DIVING. The water goes on past the map.', dur: 4 });
+      TU.emit('run:continue', { run: run, leg: run.leg, segment: run.endSeg });
+      if (!r || !r.ok) TU.emit('ui:msg', { text: 'KEEP DIVING. The water goes on past the map.', dur: 4 });
       return true;
     },
     toTitle: function () { TU.run = null; resetAll(makeRun({ seed: 1 })); TU.run = null; TU.setState('title'); },
@@ -264,7 +286,9 @@
       surfaced: P.surfaced, speed: P.speed, rope: TU.player.ropeLength(), inBranch: env.pathId === 'branch',
       seen: TU.creatures.seenCount(), creatures: TU.creatures.total(), pos: [P.pos.x, P.pos.y, P.pos.z], vestAir: P.vestAir, wp: P.wpCount,
       runT: TU.run ? TU.run.t : 0, seed: TU.run ? TU.run.seed : null, layoutOk: !!(TU.run && TU.run.layout && TU.run.layout.ok),
-      health: P.health, endless: !!(TU.run && TU.run.endless), tutorial: !!(TU.run && TU.run.tutorial), disabled: Object.keys(disabled)
+      health: P.health, endless: !!(TU.run && TU.run.endless), tutorial: !!(TU.run && TU.run.tutorial), disabled: Object.keys(disabled),
+      endSeg: TU.run ? TU.run.endSeg || 0 : 0, maxZone: TU.run ? TU.run.maxZone || 0 : 0,
+      zoneAt: TU.cave.zoneAt ? TU.cave.zoneAt(P.pos).index : P.zone, building: !!(TU.cave.endless && TU.cave.endless.building())
     };
   }
   window.__debug = {

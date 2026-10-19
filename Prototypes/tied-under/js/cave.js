@@ -27,7 +27,8 @@
   var GEO = TU.caveGeo, V = GEO.v;
   var CELL = GEO.CELL;
 
-  var W = { built: false, t: 0, G: null, root: null, chunks: [], mats: null, buildKey: null, colliders: [], colHash: new Map(), falling: [], buildMs: 0 };
+  var W = { built: false, t: 0, G: null, root: null, chunks: [], mats: null, buildKey: null, colliders: [], colHash: new Map(), falling: [], buildMs: 0,
+    segs: [], job: null, beyondStartM: 1e9, buildingSeg: 0, fallbackPi: null };
   var G = null; // the current cave geometry (TU.caveGeo.create)
 
   /* ------------------------------------------------------------------ */
@@ -65,6 +66,50 @@
   };
 
   /* ------------------------------------------------------------------ */
+  /* Endless mode: the Beyond zones below the first bottom               */
+  /* ------------------------------------------------------------------ */
+  // Every KEEP DIVING opens a new generated segment under the last Ancient Ring. Inside those
+  // segments the depth zones go on past the five of the first cave: zone index 5 "The Hollow"
+  // (down to 350 m), 6 "The Root" (350 m and deeper), then a new zone every 100 m, cycling
+  // through the variants below with a number (The Hollow II, ...). The first cave keeps 0..4.
+  var ENDLESS = {
+    beyondTopM: 250,     // m, where zone 6 ("The Hollow", index 5) starts by name
+    stepM: 100,          // m of depth per Beyond zone
+    budgetMs: 6,         // ms per frame spent building a new segment (sampling, meshing, dressing)
+    minOpenS: 3.6,       // s of rumbling before the floor can break open (the dramatic part)
+    holeClear: 3.4,      // m around the hole where boulders and stalagmites fall away
+    maxAttempts: 8       // derived seeds tried until the air rule and the space below both work
+  };
+  var BEYOND = [
+    { name: 'The Hollow', subtitle: 'The rock opens up. Nothing should be this big down here.', col: 0x8C8790 },
+    { name: 'The Root', subtitle: 'Something grew down through the stone. It is still growing.', col: 0x5F3B2D },
+    { name: 'The Glass Dark', subtitle: 'Black glass walls. Your light goes in and does not come back.', col: 0x2A2A31 },
+    { name: 'The Bone Choir', subtitle: 'The walls are full of bones. The water hums.', col: 0xA39A84 },
+    { name: 'The Still Sea', subtitle: 'Green water, perfectly still. Something is listening.', col: 0x34514A }
+  ];
+  var ROMAN = ['', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X'];
+  function beyondZone(depth) { return 5 + Math.max(0, Math.floor((depth - ENDLESS.beyondTopM) / ENDLESS.stepM)); }
+  function zoneName(z) {
+    if (z < 5) return U.ZONE_NAMES[z];
+    var i = z - 5, cyc = Math.floor(i / BEYOND.length);
+    return BEYOND[i % BEYOND.length].name + (ROMAN[cyc] != null ? ROMAN[cyc] : ' ' + (cyc + 1));
+  }
+  function zoneTopM(z) { return z < 5 ? U.ZONE_TOP_M[z] : z === 5 ? Math.min(ENDLESS.beyondTopM, W.beyondStartM || ENDLESS.beyondTopM) : ENDLESS.beyondTopM + (z - 5) * ENDLESS.stepM; }
+  // Zone index at a point: the first cave uses the classic five zones, endless segments the Beyond zones.
+  function zoneIndexAt(x, y, z, P) {
+    var depth = Math.max(0, TU.cfg.world.surfaceY - y), seg;
+    if (P) seg = P.seg || 0;
+    else { var pi = G ? GEO.pieceAt(G, x, y, z) : -1; seg = pi >= 0 ? (G.pieces[pi].seg || 0) : (depth >= (W.beyondStartM || 1e9) ? 1 : 0); }
+    return seg > 0 ? beyondZone(depth) : U.zoneOfDepth(depth);
+  }
+  // Area (banner) for a Beyond zone, made on first use.
+  function beyondArea(z) {
+    var id = 'bz' + z, A = TU.cave.areas;
+    if (!A[id]) A[id] = { id: id, title: zoneName(z).toUpperCase(), subtitle: BEYOND[(z - 5) % BEYOND.length].subtitle, style: 'zone', pieceType: 'straight', zone: z };
+    return id;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Colors (linear) for painting the wall mesh                          */
   /* ------------------------------------------------------------------ */
   function lin(h) { var c = new T.Color(h); return [Math.pow(c.r, 2.2), Math.pow(c.g, 2.2), Math.pow(c.b, 2.2)]; }
@@ -72,7 +117,16 @@
   var PAL = [[0, lin(0xC9B99A)], [14, lin(0xBDAD8E)], [28, lin(0x8C7F6A)], [62, lin(0x726A5E)], [112, lin(0x625C52)], [132, lin(0x4E4A3C)], [188, lin(0x4A463C)], [212, lin(0x3A3A40)], [400, lin(0x323237)]];
   var C_SILT = [lin(0xA89A7E), lin(0xA89A7E), lin(0x9A8F78), lin(0x8B8468), lin(0x5C5B5E)];
   var C_WETAIR = lin(0x5C5248);
-  function palette(depth, out) {
+  var BEY_LIN = BEYOND.map(function (b) { return lin(b.col); });
+  // seg > 0: the Beyond palettes (one per zone, blending into the next near each boundary).
+  function palette(depth, out, seg) {
+    if (seg > 0) {
+      var zf = (depth - ENDLESS.beyondTopM) / ENDLESS.stepM, bi = Math.max(0, Math.floor(zf)), fr = zf - bi;
+      var c0 = BEY_LIN[bi % BEY_LIN.length], c1 = BEY_LIN[(bi + 1) % BEY_LIN.length], tb = smooth(0.85, 1.0, fr);
+      if (zf < 0) { c1 = c0; c0 = PAL[PAL.length - 1][1]; tb = smooth(-0.35, 0, zf); }
+      out[0] = lerp(c0[0], c1[0], tb); out[1] = lerp(c0[1], c1[1], tb); out[2] = lerp(c0[2], c1[2], tb);
+      return out;
+    }
     for (var i = 0; i < PAL.length - 1; i++) {
       if (depth <= PAL[i + 1][0]) { var a = PAL[i], b = PAL[i + 1], t = smooth(a[0], b[0], depth); out[0] = lerp(a[1][0], b[1][0], t); out[1] = lerp(a[1][1], b[1][1], t); out[2] = lerp(a[1][2], b[1][2], t); return out; }
     }
@@ -123,7 +177,7 @@
       var P = G.pieces[v], dd = Math.abs(P.center[0] - x) + Math.abs(P.center[1] - y) + Math.abs(P.center[2] - z);
       if (dd < bd) { bd = dd; best = v; }
     }
-    if (best < 0) best = G.entrance.idx;
+    if (best < 0) best = W.fallbackPi != null && G.pieces[W.fallbackPi] && !G.pieces[W.fallbackPi].freed ? W.fallbackPi : G.entrance.idx;
     if (hint) hint.pi = best;
     return best;
   }
@@ -132,15 +186,18 @@
   /* ------------------------------------------------------------------ */
   /* Piece properties: area, silt, current, temperature, decoration      */
   /* ------------------------------------------------------------------ */
-  function classifyPieces() {
-    var L = G.layout, pieces = G.pieces;
-    var rnd = TU.rng(G.seed, 12);
+  // pieces: the pieces to classify (a whole cave, or one endless segment); mainIds: their main line
+  // (piece ids, in order); rnd: a seeded Rng; seg: segment index (0 = the first cave).
+  function classifyPieces(pieces, mainIds, rnd, seg) {
+    var L = { mainPath: mainIds };
+    pieces = pieces || G.pieces; rnd = rnd || TU.rng(G.seed, 12); seg = seg || 0;
+    if (!mainIds) L = G.layout;
     pieces.forEach(function (P) {
-      var t = P.type, z = P.zone;
+      var t = P.type, z = Math.min(4, P.zone);
       P.silt = t === 'silt_floor' ? 1 : P.room ? (P.dry ? 0.1 : 0.45) : t === 'dead_end' ? 0.55 : (t === 'shaft_down' || t === 'shaft_up') ? 0.08 : 0.12 + 0.2 * rnd.float();
       if (P.start) P.silt = 0.05;
       P.scallop = t === 'current' ? 1 : 0.25 + 0.2 * rnd.float();
-      var zf = [1.0, 0.9, 0.75, 0.32, 0.22][z];
+      var zf = seg ? 0.5 : [1.0, 0.9, 0.75, 0.32, 0.22][z]; // the Beyond is strangely decorated
       var tf = P.room ? 1.0 : t === 'junction_t' || t === 'junction_x' ? 0.55 : t === 'squeeze' ? 0.05 : t === 'current' ? 0.08 : t === 'dead_end' ? 0.6 : t === 'air_pocket' ? 0.65 : t === 'silt_floor' ? 0.25 : (t === 'shaft_down' || t === 'shaft_up') ? 0.22 : 0.38;
       if (P.dry) tf = 1.25;
       if (P.start) tf = 0.15;
@@ -153,8 +210,8 @@
     });
     // Make sure there is a silty gallery somewhere (old saves and tests expect one).
     var anySilt = pieces.some(function (P) { return P.type === 'silt_floor'; });
-    G.siltFix = null;
-    if (!anySilt) {
+    if (!seg) G.siltFix = null;
+    if (!anySilt && !seg) {
       var main = L.mainPath.map(function (id) { return G.byId[id]; });
       for (var i = 2; i < main.length - 2; i++) {
         var P = main[i], Q = main[i + 1];
@@ -178,7 +235,8 @@
     pieces.forEach(function (P) {
       var t = P.type, a;
       if (P.start) a = 'mouth';
-      else if (P.bottom) a = 'chamber';
+      else if (seg && (P.segStart || P.connector)) a = 'seg' + seg;
+      else if (P.bottom) a = seg ? 'chamber' + seg : 'chamber';
       else if (P.dry) a = 'drychamber';
       else if (t === 'landmark') a = 'lm' + P.id;
       else if (t === 'air_pocket' || P.airChamber) a = 'pocket';
@@ -190,12 +248,16 @@
       else if (P.room) a = 'room';
       else if (P.dropRun) a = 'drop';
       else if ((t === 'junction_t' || t === 'junction_x') && P.role === 'main') a = 'junction';
-      else a = ZONE_AREA[P.zone];
+      else a = seg ? beyondArea(P.zone) : ZONE_AREA[P.zone];
       P.area = a;
     });
     // landmark areas get their own entry (their name is the banner)
-    var areas = {};
-    for (var id in AREAS) areas[id] = AREAS[id];
+    var areas = seg ? TU.cave.areas : {};
+    if (!seg) for (var id in AREAS) areas[id] = AREAS[id];
+    if (seg) {
+      areas['seg' + seg] = { id: 'seg' + seg, title: 'THE WAY DOWN', subtitle: 'Below the Ancient Ring. Nobody has ever been this deep.', style: 'zone', pieceType: 'shaft_down' };
+      areas['chamber' + seg] = { id: 'chamber' + seg, title: 'ANOTHER RING', subtitle: 'It has been waiting for you. Touch it.', style: 'zone', pieceType: 'chamber_large' };
+    }
     pieces.forEach(function (P) {
       if (P.type !== 'landmark') return;
       areas[P.area] = { id: P.area, title: P.lmName.toUpperCase(), subtitle: LANDMARKS[P.lmName] || '', style: 'zone', pieceType: 'landmark' };
@@ -217,8 +279,8 @@
   }
   // Flow strength 0..1 along a run of current pieces (fades in and out at its ends).
   function makeFade(a0, a1) { return function (s) { return smooth(a0 - 3, a0 + 2, s) * smooth(a1 + 3, a1 - 2, s); }; }
-  function setupCurrents() {
-    var rnd = TU.rng(G.seed, 13), list = [];
+  function setupCurrents(rnd, prefix) {
+    rnd = rnd || TU.rng(G.seed, 13); prefix = prefix || ''; var list = [];
     G.paths.forEach(function (path) {
       // walk the path's pieces in order and group consecutive current pieces
       var seen = [], order = [];
@@ -234,7 +296,7 @@
         var speed = 0.75 + rnd.float() * 0.65;
         var sign = path.kind === 'main' ? -1 : (rnd.chance(0.5) ? -1 : 1);
         var pulse = rnd.chance(0.6) ? { period: 9 + rnd.float() * 7, duration: 2.5 + rnd.float() * 1.5 } : null;
-        var id = 'current' + list.length;
+        var id = prefix + 'current' + list.length;
         var flow = { speed: speed, sign: sign, pulse: pulse, phase: rnd.float() * 20, fade: makeFade(s0, s1), id: id };
         run.forEach(function (Q) { Q.flow = flow; });
         var mid = pathAt(path, (s0 + s1) / 2), dir = V.mul(mid.tan, sign);
@@ -303,7 +365,7 @@
       nx = mx / ml; ny = my / ml; nz = mz / ml;
       N32[i * 3] = nx; N32[i * 3 + 1] = ny; N32[i * 3 + 2] = nz;
       // base color from depth, silt on floors, darker ceilings, occlusion in crevices
-      palette(depth, col);
+      palette(depth, col, P.seg || 0);
       var r = col[0], gg = col[1], b = col[2];
       var fl = smooth(0.5, 0.9, ny) * (0.25 + 0.75 * P.silt);
       var sc = C_SILT[Math.min(4, U.zoneOfDepth(depth))];
@@ -317,9 +379,11 @@
         r = lerp(r, C_WETAIR[0], 0.35); gg = lerp(gg, C_WETAIR[1], 0.35); b = lerp(b, C_WETAIR[2], 0.35);
         ao *= 0.92;
       }
-      var tint = 0.92 + 0.16 * GEO.hf(pi, 1, 0, 91);
+      var tint = 0.92 + 0.16 * GEO.hfS(P.seedV != null ? P.seedV : G.seedV, pi, 1, 0, 91);
       C32[i * 3] = r * ao * tint; C32[i * 3 + 1] = gg * ao * tint; C32[i * 3 + 2] = b * ao * tint;
       var day = depth < 60 ? daylightAt(x + nx * 0.25, y + ny * 0.25, z + nz * 0.25) : 0;
+      // Beyond rock: the shader reads a negative daylight as "which Beyond look" (1 + variant)
+      if (P.seg > 0) day = -(1 + (beyondZone(depth) - 5) % BEYOND.length);
       I32[i * 4] = wet; I32[i * 4 + 1] = day; I32[i * 4 + 2] = P.deco || 0; I32[i * 4 + 3] = P.scallop || 0.3;
     }
     var geo = new T.BufferGeometry();
@@ -329,34 +393,44 @@
     geo.setAttribute('aInfo', new T.BufferAttribute(I32, 4));
     geo.setIndex(nv > 65535 ? new T.BufferAttribute(new Uint32Array(idx), 1) : new T.BufferAttribute(new Uint16Array(idx), 1));
     geo.computeBoundingSphere();
-    if (ch.mesh) { W.root.remove(ch.mesh); ch.mesh.geometry.dispose(); }
+    var root = ch.root || W.root;
+    if (ch.mesh) { root.remove(ch.mesh); ch.mesh.geometry.dispose(); }
     var mesh = new T.Mesh(geo, W.mats.rock);
     mesh.receiveShadow = true; mesh.castShadow = true; mesh.name = 'rock';
     mesh.matrixAutoUpdate = false; mesh.updateMatrix();
     ch.mesh = mesh; ch.tris = idx.length / 3; ch.verts = nv;
     ch.center = geo.boundingSphere.center.clone(); ch.radius = geo.boundingSphere.radius;
-    W.root.add(mesh);
+    root.add(mesh);
   }
   function buildAllChunks() {
+    var cells = [];
+    G.cellMap.forEach(function (pi, k) { cells.push(GEO.decode(k)); });
+    W.chunks = []; W.chunkByCell = new Map(); W.pending = [];
+    makeChunks(cells, W.segs[0], spawnPoint().pos, 40);
+  }
+  // Group cells into chunks (up to 2x2x2 cells, never mixing segments) and register them.
+  // Chunks within nearM of nearPos are meshed now, the rest wait in W.pending.
+  function makeChunks(cells, seg, nearPos, nearM) {
     var map = new Map();
-    G.cellMap.forEach(function (pi, k) {
-      var d = (k % 256) - 16, r = (k - (d + 16)) / 256, y = (r % 1024) - 512, x = (r - (y + 512)) / 1024 - 512;
-      var ck = Math.floor(x / 2) + ',' + Math.floor(y / 2) + ',' + Math.floor(d / 2);
-      var ch = map.get(ck); if (!ch) { ch = { key: ck, cells: [], pi: pi, mesh: null }; map.set(ck, ch); }
+    cells.forEach(function (c) {
+      var x = c[0], y = c[1], d = c[2], pi = G.cellMap.get(GEO.key(x, y, d));
+      if (pi === undefined) return;
+      var ck = 's' + seg.index + ':' + Math.floor(x / 2) + ',' + Math.floor(y / 2) + ',' + Math.floor(d / 2);
+      var ch = map.get(ck); if (!ch) { ch = { key: ck, cells: [], pi: pi, mesh: null, root: seg.root, seg: seg.index }; map.set(ck, ch); }
       ch.cells.push([x, y, d]);
     });
-    W.chunks = []; W.chunkByCell = new Map(); W.pending = [];
     // Progressive build: the wall mesh near the spawn is built now, the rest a few chunks per
     // frame (nearest to the camera first, and immediately if you get close to one).
-    var sp = spawnPoint().pos;
+    var sp = nearPos, out = [];
     map.forEach(function (ch) {
       var c = [0, 0, 0];
       ch.cells.forEach(function (cc) { var w = GEO.cellCenter(cc[0], cc[1], cc[2]); c[0] += w[0]; c[1] += w[1]; c[2] += w[2]; });
       ch.center = new T.Vector3(c[0] / ch.cells.length, c[1] / ch.cells.length, c[2] / ch.cells.length);
       ch.radius = 0; ch.cells.forEach(function (cc) { var w = GEO.cellCenter(cc[0], cc[1], cc[2]); ch.radius = Math.max(ch.radius, ch.center.distanceTo(v3(w)) + 7); });
-      W.chunks.push(ch); ch.cells.forEach(function (cc) { W.chunkByCell.set(GEO.key(cc[0], cc[1], cc[2]), ch); });
-      if (sp.distanceTo(ch.center) - ch.radius < 40) buildChunk(ch); else W.pending.push(ch);
+      W.chunks.push(ch); seg.chunks.push(ch); out.push(ch); ch.cells.forEach(function (cc) { W.chunkByCell.set(GEO.key(cc[0], cc[1], cc[2]), ch); });
+      if (sp && sp.distanceTo(ch.center) - ch.radius < nearM) buildChunk(ch); else W.pending.push(ch);
     });
+    return out;
   }
   // Build pending wall chunks: forced for chunks near pos, then nearest first within a time budget (ms).
   function pumpChunks(pos, budgetMs) {
@@ -378,6 +452,7 @@
   // sphere: { t: 0, c: [x,y,z], r } ; capsule: { t: 1, a, b, r }
   function addCollider(c) {
     var lo, hi;
+    if (c.seg == null) c.seg = W.buildingSeg || 0;
     if (c.t === 0) { lo = [c.c[0] - c.r, c.c[1] - c.r, c.c[2] - c.r]; hi = [c.c[0] + c.r, c.c[1] + c.r, c.c[2] + c.r]; }
     else { lo = [Math.min(c.a[0], c.b[0]) - c.r, Math.min(c.a[1], c.b[1]) - c.r, Math.min(c.a[2], c.b[2]) - c.r]; hi = [Math.max(c.a[0], c.b[0]) + c.r, Math.max(c.a[1], c.b[1]) + c.r, Math.max(c.a[2], c.b[2]) + c.r]; }
     W.colliders.push(c);
@@ -446,7 +521,7 @@
       pieceId: P.id,                                  // generator piece id
       pieceType: P.type,                              // generator TYPES name
       area: P.area,
-      zone: U.zoneOfDepth(depth),
+      zone: zoneIndexAt(x, y, z, P),                 // 0..4 in the first cave, 5+ in the Beyond
       dry: surf !== null && y > surf,
       siltiness: P.silt,                              // 0..1 how silty the floor is here
       current: currentAt(P, x, y, z, np, new T.Vector3()), // m/s water flow
@@ -515,7 +590,10 @@
   }
   function waterSurfaceY(pos) { if (!G) return null; var P = G.pieces[locate(pos.x, pos.y, pos.z)]; return surfaceOf(P, pos.x, pos.y, pos.z); }
   function isDry(pos) { var y = waterSurfaceY(pos); return y !== null && pos.y > y; }
-  function zoneAt(pos) { var depth = Math.max(0, -pos.y), z = U.zoneOfDepth(depth); return { index: z, name: U.ZONE_NAMES[z], topM: U.ZONE_TOP_M[z] }; }
+  // { index, name, topM, beyond }: index 0..4 in the first cave, 5+ in endless segments (the Beyond).
+  function zoneAt(pos) { var z = zoneIndexAt(pos.x, pos.y, pos.z); return { index: z, name: zoneName(z), topM: zoneTopM(z), beyond: z >= 5 }; }
+  // Which cave segment a point is in (0 = the first cave, k = the k-th KEEP DIVING segment), -1 in solid rock or outside.
+  function segmentAt(pos) { if (!G || !pos) return -1; var pi = GEO.pieceAt(G, pos.x, pos.y, pos.z); if (pi < 0 || !G.pieces[pi] || G.pieces[pi].freed) return -1; return G.pieces[pi].seg || 0; }
   function areaAt(pos, hint) { if (!G) return null; var P = G.pieces[locate(pos.x, pos.y, pos.z, hint)]; return TU.cave.areas[P.area] || null; }
 
   // A random point in the cave. opts: { area, zone, surface: 'water'|'ceiling'|'floor'|'wall', frac: [min, max] }
@@ -525,10 +603,10 @@
     var cands = G.pieces.filter(function (P) {
       if (opts.area && P.area !== opts.area) return false;
       if (opts.zone !== undefined && opts.zone !== null && P.zone !== opts.zone) return false;
-      return P.segs.length > 0 && !P.start;
+      return P.segs.length > 0 && !P.start && !P.freed && !(P.seg > 0 && !segOpen(P.seg));
     });
     if (!cands.length && opts.area === 'chamber' && G.bottom) cands = [G.bottom];
-    if (!cands.length && opts.area) cands = G.pieces.filter(function (P) { return P.segs.length && !P.start && P.zone >= 1; });
+    if (!cands.length && opts.area) cands = G.pieces.filter(function (P) { return P.segs.length && !P.start && P.zone >= 1 && !P.freed && !(P.seg > 0 && !segOpen(P.seg)); });
     if (!cands.length) return null;
     var tot = 0, wts = cands.map(function (P) { var w = P.cells.length; tot += w; return w; });
     for (var tries = 0; tries < 50; tries++) {
@@ -552,7 +630,7 @@
       }
       var gg = GEO.gradient(G, p[0], p[1], p[2], [0, 0, 0]), gl = V.len(gg) || 1;
       var np = nearestOnPiece(P, p[0], p[1], p[2]);
-      var depth = Math.max(0, -p[1]), zn = U.zoneOfDepth(depth);
+      var zn = zoneIndexAt(p[0], p[1], p[2], P);
       if (opts.zone !== undefined && opts.zone !== null && zn !== opts.zone && tries < 40) continue;
       return { pos: v3(p), normal: new T.Vector3(-gg[0] / gl, -gg[1] / gl, -gg[2] / gl), area: P.area, zone: zn, pieceType: P.type, s: np ? np.s : 0, pathId: np ? np.path.kind : 'main', pieceId: P.id };
     }
@@ -562,7 +640,8 @@
   /* ------------------------------------------------------------------ */
   /* Named spots (debug teleports, filming, tests)                       */
   /* ------------------------------------------------------------------ */
-  var SPOT_NAMES = ['entrance', 'mid', 'junction', 'pocket', 'airpocket', 'pocketSurface', 'squeeze', 'silt', 'drop', 'current', 'drychamber', 'ledge', 'landmark', 'deep', 'bottom', 'end', 'stalactites', 'branch', 'branchEnd', 'deadend', 'loop'];
+  var SPOT_NAMES = ['entrance', 'mid', 'junction', 'pocket', 'airpocket', 'pocketSurface', 'squeeze', 'silt', 'drop', 'current', 'drychamber', 'ledge', 'landmark', 'deep', 'bottom', 'end', 'stalactites', 'branch', 'branchEnd', 'deadend', 'loop',
+    'hole', 'shaft', 'segStart', 'segPocket', 'dome']; // the last five: endless mode (the newest segment)
   function look(from, to) { return U.yawPitchOf({ x: to[0] - from[0], y: to[1] - from[1], z: to[2] - from[2] }); }
   function mk(p, yp, s, pathId) { return { pos: v3(p), yaw: yp.yaw, pitch: clamp(yp.pitch, -1.35, 1.35), s: s, pathId: pathId || 'main' }; }
   // A spot on a path, looking along the passage: toward the center line 5 m ahead (not the local
@@ -663,14 +742,7 @@
     var LM = G.pieces.filter(function (P) { return P.type === 'landmark'; })[0];
     if (LM && LM.arms && LM.arms.length) { var q0 = LM.arms[0].q; S.landmark = mk(q0, look(q0, [LM.center[0], LM.floorY + 3, LM.center[2]]), 0, LM.role); }
     // the bottom chamber and the ancient thing
-    var B = G.bottom;
-    if (B && W.core) {
-      var entry = B.arms[0] ? B.arms[0].q : B.center, core = W.core;
-      S.deep = mk(entry, look(entry, core), main.L - 10, 'main');
-      S.bottom = S.deep;
-      var ax = W.coreAxis, ep = [core[0] + ax[0] * 6.5, core[1], core[2] + ax[2] * 6.5];
-      S.end = mk(ep, look(ep, core), main.L - 4, 'main');
-    }
+    ringSpots(S);
     S.stalactites = W.stalSpot || null;
     // side branches
     var DE = G.paths.filter(function (p) { return p.kind === 'branch'; }).sort(function (a, b) { return b.L - a.L; })[0];
@@ -678,6 +750,17 @@
     var LP = G.paths.filter(function (p) { return p.kind === 'loop'; })[0];
     if (LP) S.loop = onPath(LP, Math.min(8, LP.L * 0.3));
     W.spots = S;
+  }
+  // deep / bottom / end: the way into the goal chamber, and right in front of its ring.
+  function ringSpots(S) {
+    var B = G.bottom, main = G.main;
+    if (B && W.core) {
+      var entry = B.arms[0] ? B.arms[0].q : B.center, core = W.core;
+      S.deep = mk(entry, look(entry, core), main.L - 10, 'main');
+      S.bottom = S.deep;
+      var ax = W.coreAxis, ep = [core[0] + ax[0] * 6.5, core[1], core[2] + ax[2] * 6.5];
+      S.end = mk(ep, look(ep, core), main.L - 4, 'main');
+    }
   }
   // Named places. opts: { dy, yaw, pitch, low } offsets added on top.
   function spot(name, opts) {
@@ -715,27 +798,37 @@
       list.push({ id: id, pos: v3(p), target: to, to: to.clone(), dir: to.clone().sub(v3(p)).normalize(), dist: Math.abs(ds) });
     });
   }
-  function buildFeatures(dress) {
-    var E = G.entrance, main = G.main, F = {};
-    var a0 = pathAt(main, 4);
-    F.entrance = { pos: new T.Vector3(E.pool[0], -1.5, E.pool[2]), dir: v3(a0.tan), stake: dress.stake.clone(), surfaceY: TU.cfg.world.surfaceY };
-    F.bottom = { pos: v3(W.core), radius: 2.4, kind: 'ancient', name: 'The Ancient Ring' };
+  // A piece that is part of the cave you can swim in right now (not freed, not still being built).
+  function live(P) { return !P.freed && !(P.seg > 0 && !segOpen(P.seg)); }
+  function segOpen(k) { var sg = W.segs[k]; return !!(sg && sg.opened && !sg.freed); }
+  function pathSealed(p) { for (var i = 0; i < p.owner.length; i++) if (!live(G.pieces[p.owner[i]])) return true; return false; }
+  // The newest segment whose floor is open (its Ancient Ring is the goal).
+  function topSeg() { for (var i = W.segs.length - 1; i >= 0; i--) if (W.segs[i] && W.segs[i].opened && !W.segs[i].freed) return W.segs[i]; return W.segs[0]; }
+
+  function buildFeatures() {
+    var E = G.entrance, main = G.main, F = {}, top = topSeg(), segs = W.segs.filter(function (sg) { return sg && sg.opened && !sg.freed; });
+    if (!W.entranceF) { var a0 = pathAt(main, 4); W.entranceF = { pos: new T.Vector3(E.pool[0], -1.5, E.pool[2]), dir: v3(a0.tan), stake: W.segs[0].dress.stake.clone(), surfaceY: TU.cfg.world.surfaceY }; }
+    F.entrance = W.entranceF;
+    // the goal: the newest open Ancient Ring (segment tells main.js which leg it ends)
+    F.bottom = { pos: v3(top.core), radius: 2.4, kind: 'ancient', name: 'The Ancient Ring', segment: top.index };
     F.airPockets = []; F.airHints = [];
-    G.pieces.forEach(function (P) {
+    var pieces = G.pieces.filter(live);
+    pieces.forEach(function (P) {
       if (P.type !== 'air_pocket') return;
       var c = [P.node[0], P.waterY, P.node[2]];
       F.airPockets.push({ id: 'pocket' + P.id, pieceId: P.id, pos: v3(c), surfaceY: P.waterY, radius: 2.3, hintPos: new T.Vector3(c[0], P.waterY - 3.2, c[2]), warm: !!P.warm });
       hintsAround(P, c, P.waterY, 'pocket' + P.id, F.airHints);
     });
-    // big chambers with an air dome at the top (dry chambers whose passages come in too high)
-    G.pieces.forEach(function (P) {
+    // big chambers with an air dome at the top (dry chambers whose passages come in too high,
+    // and in endless mode every Ancient Ring chamber you have broken open)
+    pieces.forEach(function (P) {
       if (!P.airChamber) return;
       var c = [P.center[0], P.waterY, P.center[2]];
-      F.airPockets.push({ id: 'pocket' + P.id, pieceId: P.id, pos: v3(c), surfaceY: P.waterY, radius: (P.box.x1 - P.box.x0) / 2 - 1, hintPos: new T.Vector3(c[0], P.waterY - 3.2, c[2]), warm: !!P.warm, chamber: true });
-      hintsAround(P, c, P.waterY, 'pocket' + P.id, F.airHints);
+      F.airPockets.push({ id: 'pocket' + P.id, pieceId: P.id, pos: v3(c), surfaceY: P.waterY, radius: P.airDome ? 4 : (P.box.x1 - P.box.x0) / 2 - 1, hintPos: new T.Vector3(c[0], P.waterY - 3.2, c[2]), warm: !!P.warm, chamber: true, dome: !!P.airDome });
+      if (!P.airDome) hintsAround(P, c, P.waterY, 'pocket' + P.id, F.airHints);
     });
     F.dryChambers = [];
-    G.pieces.forEach(function (P) {
+    pieces.forEach(function (P) {
       if (!P.dry) return;
       var b = P.box;
       F.dryChambers.push({ id: 'dry' + P.id, pieceId: P.id, pos: P.standSpot ? v3(P.standSpot) : new T.Vector3(P.center[0], P.floorBase + 1, P.center[2]), floorY: P.floorBase, waterY: P.waterY, size: new T.Vector3(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0), warm: !!P.warm,
@@ -743,52 +836,73 @@
         pools: P.pools.map(function (pl) { return new T.Vector3(pl.cx, P.waterY, pl.cz); }) });
       P.pools.forEach(function (pl) { hintsAround(P, [pl.cx, 0, pl.cz], P.waterY, 'dry' + P.id, F.airHints); });
     });
-    F.squeezes = G.pieces.filter(function (P) { return P.type === 'squeeze'; }).map(function (P) {
+    F.squeezes = pieces.filter(function (P) { return P.type === 'squeeze'; }).map(function (P) {
       var np = nearestOnPiece(P, P.node[0], P.node[1], P.node[2]);
       return { id: 'squeeze' + P.id, pieceId: P.id, pos: v3(P.node), s: np ? np.s : 0, pathId: np ? np.path.kind : 'main', length: 4, minRadius: Math.min(P.prof.r[0], P.prof.r[1] + P.prof.r[2] * 0.85) * 0.5 + 0.0 };
     });
-    F.currents = G.currents;
-    F.siltAreas = G.pieces.filter(function (P) { return P.silt >= 0.9 && !P.room; }).map(function (P) {
+    F.currents = (G.currents || []).filter(function (cu) { return cu.pieces.every(function (id) { return G.byId[id] && live(G.byId[id]); }); });
+    F.siltAreas = pieces.filter(function (P) { return P.silt >= 0.9 && !P.room; }).map(function (P) {
       var np = nearestOnPiece(P, P.node[0], P.node[1], P.node[2]);
       return { id: 'silt' + P.id, pieceId: P.id, pos: v3(P.node), sFrom: np ? np.s - 4 : 0, sTo: np ? np.s + 4 : 0, siltiness: P.silt, pathId: np ? np.path.kind : 'main' };
     });
-    F.landmarks = G.pieces.filter(function (P) { return P.type === 'landmark'; }).map(function (P) {
+    F.landmarks = pieces.filter(function (P) { return P.type === 'landmark'; }).map(function (P) {
       return { id: P.area, pieceId: P.id, name: P.lmName, subtitle: LANDMARKS[P.lmName] || '', pos: new T.Vector3(P.center[0], P.floorY + 3, P.center[2]), radius: (P.box.x1 - P.box.x0) / 2 };
     });
-    F.landmarks.push({ id: 'ancient', pieceId: G.bottom.id, name: 'The Ancient Ring', subtitle: 'Something down here is very, very old.', pos: v3(W.core), radius: 12 });
-    F.treasure = dress.finds; F.finds = dress.finds;
-    F.stalactites = dress.stalactites;
+    F.finds = []; F.stalactites = [];
+    segs.forEach(function (sg) {
+      F.landmarks.push({ id: sg.index ? 'ancient' + sg.index : 'ancient', pieceId: sg.bottomP.id, name: 'The Ancient Ring', subtitle: 'Something down here is very, very old.', pos: v3(sg.core), radius: 12, segment: sg.index });
+      if (!sg.dress) return;
+      sg.dress.finds.forEach(function (f) { var P = G.byId[f.pieceId]; if (!P || live(P)) F.finds.push(f); });
+      sg.dress.stalactites.forEach(function (st) { F.stalactites.push(st); });
+    });
+    F.treasure = F.finds;
     F.spots = { names: SPOT_NAMES.filter(function (n) { return !!W.spots[n]; }) };
+    F.segment = top.index;
     return F;
   }
 
-  // Compact map for the wrist hologram (plain arrays, cheap to draw as lines).
+  // Compact map for the wrist hologram (plain arrays, cheap to draw as lines). Only the cave you
+  // can still reach is on it: in endless mode the current and the previous segment.
   function mapData() {
     if (!G) return null;
-    var segs = [];
-    G.pieces.forEach(function (P) {
+    var segs = [], pieces = G.pieces.filter(live);
+    pieces.forEach(function (P) {
       var kind = P.type, r = P.prof ? (P.prof.r[0] + P.prof.r[1]) / 2 : 2;
       P.segs.forEach(function (sg) {
         var a = sg.path.pts[sg.i], b = sg.path.pts[sg.i + 1];
         if (G.pieces[sg.path.owner[sg.i]] !== P) return; // each segment once
-        segs.push({ a: a.slice(), b: b.slice(), r: +r.toFixed(2), kind: kind, path: sg.path.kind, collapsed: !!P.collapsed });
+        segs.push({ a: a.slice(), b: b.slice(), r: +r.toFixed(2), kind: kind, path: sg.path.kind, collapsed: !!P.collapsed, seg: P.seg || 0 });
       });
     });
+    var top = topSeg(), rings = W.segs.filter(function (sg) { return sg && sg.opened && !sg.freed && sg.core; }).map(function (sg) { return { pos: sg.core.slice(), segment: sg.index }; });
+    var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    pieces.forEach(function (P) { var b = P.box; lo[0] = Math.min(lo[0], b.x0); lo[1] = Math.min(lo[1], b.y0); lo[2] = Math.min(lo[2], b.z0); hi[0] = Math.max(hi[0], b.x1); hi[1] = Math.max(hi[1], b.y1); hi[2] = Math.max(hi[2], b.z1); });
+    var zones = [], zSeen = {};
+    pieces.forEach(function (P) { var z = P.seg > 0 ? P.zone : Math.min(4, P.zone); if (!zSeen[z]) { zSeen[z] = 1; zones.push({ index: z, name: zoneName(z), topM: zoneTopM(z) }); } });
+    zones.sort(function (a, b) { return a.index - b.index; });
+    var sticks = (TU.glowsticks && typeof TU.glowsticks.list === 'function') ? TU.glowsticks.list().map(function (g) { return { pos: [g.pos.x, g.pos.y, g.pos.z], color: g.color, light: g.brightness }; }) : [];
     return {
-      // preferred by the watch hologram: one polyline per path (main line first)
+      // preferred by the watch hologram: one polyline per path (main line first), live parts only
       paths: G.paths.map(function (p) {
         var pts = [], last = null;
-        p.pts.forEach(function (q, i) { if (!last || i === p.pts.length - 1 || Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) + Math.abs(q[2] - last[2]) > 2) { pts.push([+q[0].toFixed(2), +q[1].toFixed(2), +q[2].toFixed(2)]); last = q; } });
+        p.pts.forEach(function (q, i) {
+          if (!live(G.pieces[p.owner[i]])) { last = null; return; }
+          if (!last || i === p.pts.length - 1 || Math.abs(q[0] - last[0]) + Math.abs(q[1] - last[1]) + Math.abs(q[2] - last[2]) > 2) { pts.push([+q[0].toFixed(2), +q[1].toFixed(2), +q[2].toFixed(2)]); last = q; }
+        });
         return { id: p.id, kind: p.kind, points: pts, radius: 1.8, length: Math.round(p.L), collapsed: !!p.collapsed };
-      }),
+      }).filter(function (p) { return p.points.length > 1; }),
       segments: segs,
-      chambers: G.pieces.filter(function (P) { return P.room; }).map(function (P) { var b = P.box; return { min: [b.x0, b.y0, b.z0], max: [b.x1, b.y1, b.z1], center: P.center.slice(), kind: P.start ? 'entrance' : P.bottom ? 'bottom' : P.type, dry: !!P.dry, name: P.lmName || null }; }),
-      airPockets: G.pieces.filter(function (P) { return P.type === 'air_pocket' || P.airChamber; }).map(function (P) { var c = P.node || P.center; return { pos: [c[0], P.waterY, c[2]], surfaceY: P.waterY }; }),
-      dry: G.pieces.filter(function (P) { return P.dry; }).map(function (P) { return { pos: [P.center[0], P.floorBase, P.center[2]], waterY: P.waterY }; }),
-      bottom: W.core ? W.core.slice() : null,
+      chambers: pieces.filter(function (P) { return P.room; }).map(function (P) { var b = P.box; return { min: [b.x0, b.y0, b.z0], max: [b.x1, b.y1, b.z1], center: P.center.slice(), kind: P.start ? 'entrance' : P.bottom ? 'bottom' : P.type, dry: !!P.dry, name: P.lmName || null, seg: P.seg || 0 }; }),
+      airPockets: pieces.filter(function (P) { return P.type === 'air_pocket' || P.airChamber; }).map(function (P) { var c = P.node || P.center; return { pos: [c[0], P.waterY, c[2]], surfaceY: P.waterY }; }),
+      dry: pieces.filter(function (P) { return P.dry; }).map(function (P) { return { pos: [P.center[0], P.floorBase, P.center[2]], waterY: P.waterY }; }),
+      bottom: top.core ? top.core.slice() : (W.core ? W.core.slice() : null),
       entrance: [G.entrance.pool[0], 0, G.entrance.pool[2]],
-      bounds: (function () { var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9]; G.pieces.forEach(function (P) { var b = P.box; lo[0] = Math.min(lo[0], b.x0); lo[1] = Math.min(lo[1], b.y0); lo[2] = Math.min(lo[2], b.z0); hi[0] = Math.max(hi[0], b.x1); hi[1] = Math.max(hi[1], b.y1); hi[2] = Math.max(hi[2], b.z1); }); return { min: lo, max: hi }; })(),
-      mainLength: G.main.L
+      entranceReachable: !G.entrance.freed,
+      bounds: { min: lo, max: hi },
+      mainLength: G.main.L,
+      // endless mode (new): which segment is the goal, every ring you can still reach, the zones
+      // on the map (index, name, topM: for depth rings), and your glow sticks (small markers)
+      segment: top.index, rings: rings, zones: zones, glowSticks: sticks
     };
   }
 
@@ -806,7 +920,7 @@
   }
   // Block a piece with rubble (rock is added to the field, the mesh is rebuilt, colliders follow).
   function collapsePiece(P, cause) {
-    if (!P || P.collapsed) return false;
+    if (!P || P.collapsed || P.freed) return false;
     var pts = [];
     if (P.room) pts = P.arms.map(function (a) { return a.q; });
     else {
@@ -847,7 +961,7 @@
       var target = opts.collapse && opts.collapse.cells ? opts.collapse : null;
       if (!target) {
         var here = GEO.pieceAt(G, pos.x, pos.y, pos.z), herePath = here >= 0 ? (G.pieces[here].segs[0] || {}).path : null;
-        var cands = G.paths.filter(function (p) { return p.kind !== 'main' && p !== herePath && !p.collapsed; });
+        var cands = G.paths.filter(function (p) { return p.kind !== 'main' && p !== herePath && !p.collapsed && !p.freed && !pathSealed(p); });
         if (cands.length) {
           var path = cands[Math.floor(rnd() * cands.length)];
           // the second piece of the branch (so the rubble shows from the junction)
@@ -860,6 +974,296 @@
     }
     return { rocks: n, collapsed: collapsed };
   }
+
+  /* ------------------------------------------------------------------ */
+  /* Endless mode: KEEP DIVING opens new cave below the Ancient Ring     */
+  /* ------------------------------------------------------------------ */
+  // How it works, in plain words:
+  //   1. descend(k): the generator makes a new cave from a derived seed (run seed + k, the same
+  //      every time), and cave-sdf.js glues it under the bottom chamber with a short vertical shaft
+  //      (one more "segment"). The seed is retried a few times if the shaft would make the swim to
+  //      the first air pocket too long (the same max-gap rule the generator uses) or if there is no room.
+  //   2. A job builds it a few milliseconds per frame (no freeze): sample the new rock, mesh the
+  //      walls near the hole, dress it (formations, a new ring, finds). Meanwhile the chamber rumbles
+  //      and the old ring powers up.
+  //   3. The floor breaks open: the hole is cut into the old chamber, boulders over it fall in, and
+  //      the chamber's dome fills with air (an air source between the two caves). The new ring is now
+  //      the goal (features.bottom.segment = k). Touching it ends the leg with the same choice again.
+  //   4. Memory stays bounded: when segment k starts, segment k - 2 is freed and the shaft into
+  //      segment k - 1 collapses behind you. You can still swim back up through the previous one.
+  function holeCandidates(B, sg) {
+    var core = sg.core || B.center, ax = sg.coreAxis || [1, 0, 0], side = [-ax[2], 0, ax[0]];
+    var bones = [core[0] + side[0] * 9.5 - ax[0] * 3, core[2] + side[2] * 9.5 - ax[2] * 3];
+    var dl = B.d + B.h - 1, portCells = {};
+    B.ports.forEach(function (pt) {
+      var c = pt.cellA; if (pt.b === B.idx) c = [c[0] + [0, 1, 0, -1, 0, 0][pt.dir], c[1] + [1, 0, -1, 0, 0, 0][pt.dir], c[2] + [0, 0, 0, 0, -1, 1][pt.dir]];
+      portCells[c[0] + ',' + c[1]] = true;
+    });
+    var out = [];
+    for (var yy = 0; yy < B.l; yy++) for (var xx = 0; xx < B.w; xx++) {
+      var cx = B.x + xx, cy = B.y + yy;
+      if (portCells[cx + ',' + cy]) continue;
+      var cc = GEO.cellCenter(cx, cy, dl), r = Math.hypot(cc[0] - core[0], cc[2] - core[2]);
+      var score = Math.abs(r - 12.8) + (Math.hypot(cc[0] - bones[0], cc[2] - bones[1]) < 6 ? 8 : 0) + (r < 9 ? 20 : 0);
+      out.push({ col: [cx, cy], score: score });
+    }
+    out.sort(function (a, b) { return a.score - b.score; });
+    return out.map(function (o) { return o.col; });
+  }
+  // The generator's air rule for the new segment: the shaft plus the swim from its start room to
+  // the first air source must fit in maxGap seconds (the old chamber's air dome is the air before it).
+  function airGapOK(lay, nConn, diff) {
+    var C = TU.gen.constants, api = TU.gen.api, maxGap = (C.DIFF[diff] || C.DIFF.standard).maxGap, byId = {};
+    lay.pieces.forEach(function (p) { byId[p.id] = p; });
+    var gap = nConn * C.COST.shaft_down;
+    for (var i = 1; i < lay.mainPath.length; i++) { var p = byId[lay.mainPath[i]]; if (p.type === 'air_pocket' || p.dry) break; gap += api.gapCostOf(p); }
+    return gap <= maxGap;
+  }
+  // Which cell of the new start room the shaft comes down into: the one farthest from its way out.
+  function startCellFor(st) {
+    var so = (st.sockets && st.sockets[0]) || [st.x, st.y, st.d], best = [st.x, st.y], bd = -1;
+    for (var yy = 0; yy < st.l; yy++) for (var xx = 0; xx < st.w; xx++) { var d = Math.abs(st.x + xx - so[0]) + Math.abs(st.y + yy - so[1]); if (d > bd) { bd = d; best = [st.x + xx, st.y + yy]; } }
+    return best;
+  }
+  function inBounds(lay, off) { return lay.pieces.every(function (p) { return Math.abs(p.x + off[0]) < 480 && Math.abs(p.x + p.w + off[0]) < 480 && Math.abs(p.y + off[1]) < 480 && Math.abs(p.y + p.l + off[1]) < 480 && p.d + p.h + off[2] < 1000; }); }
+
+  function descend(k, opts) {
+    opts = opts || {};
+    if (!G) return { ok: false, reason: 'no cave' };
+    if (W.job) return { ok: false, reason: 'busy' };
+    var prev = W.segs[W.segs.length - 1];
+    if (k == null) k = prev.index + 1;
+    if (!prev || prev.index !== k - 1 || !prev.opened || prev.freed) return { ok: false, reason: 'order' };
+    var B0 = prev.bottomP, run = TU.run || {};
+    var baseSeed = (opts.seed != null ? opts.seed : run.seed != null ? run.seed : W.segs[0].seed) >>> 0;
+    var diff = opts.difficulty || (W.segs[0].layout && W.segs[0].layout.difficulty) || 'standard';
+    // keep memory bounded: the segment before the previous one goes, and the shaft behind you caves in
+    var freedNow = null;
+    if (k >= 2 && W.segs[k - 2] && !W.segs[k - 2].freed) { freedNow = k - 2; freeSegment(k - 2); }
+    var maxD = -1e9; G.cellMap.forEach(function (pi, kk) { var c = GEO.decode(kk); if (c[2] > maxD) maxD = c[2]; });
+    var cols = holeCandidates(B0, prev);
+    var dTop = B0.d + B0.h, dStart = Math.max(maxD + 1, dTop + 2);
+    var res = null, lay = null, seedK = 0, at;
+    for (at = 0; at < ENDLESS.maxAttempts && !res; at++) {
+      seedK = (baseSeed + k + at * 7919) >>> 0;      // derived seed: run seed + segment index (+ retries)
+      lay = TU.gen.generate(seedK, { difficulty: diff });
+      if (!lay || !lay.ok || !airGapOK(lay, dStart - dTop, diff)) continue;
+      var st = lay.pieces.filter(function (p) { return p.start; })[0], pick = startCellFor(st);
+      for (var ci = 0; ci < cols.length && !res; ci++) {
+        var col = cols[ci], off = [col[0] - pick[0], col[1] - pick[1], dStart - st.d];
+        if (!inBounds(lay, off)) continue;
+        try { res = GEO.extend(G, lay, { seg: k, off: off, idBase: k * 10000, branchBase: k * 1000, from: B0, column: col, dTop: dTop, dStart: dStart }); }
+        catch (e) { if (!/cell taken/.test(e && e.message)) throw e; res = null; }
+      }
+    }
+    if (!res) { TU.emit('ui:msg', { text: 'The Ring flickers, but the floor holds. The way down stays shut.', dur: 4 }); return { ok: false, reason: 'no room' }; }
+    var newP = res.connector.concat(res.pieces);
+    var seg = { index: k, seed: seedK, layout: lay, root: new T.Group(), chunks: [], opened: false, freed: false, pieces: newP.map(function (P) { return P.idx; }),
+      bottomP: res.bottom, startP: res.start, connector: res.connector, hole: res.hole, from: B0, cells: res.cells, cellCount: res.cells.length, dress: null,
+      attempts: at, freedPrev: freedNow, topM: dTop * CELL, startM: dStart * CELL };
+    seg.root.name = 'cave-seg' + k; W.root.add(seg.root);
+    W.segs[k] = seg;
+    if (k === 1 || dTop * CELL < W.beyondStartM) W.beyondStartM = dTop * CELL;
+    var names = TU.gen.constants.LANDMARK_NAMES;
+    newP.forEach(function (P) {
+      if (P.type === 'landmark') P.lmName = names[(P.landmarkId >= 0 ? P.landmarkId : P.id) % names.length];
+      P.zone = beyondZone(Math.max(0, -P.center[1]));
+    });
+    classifyPieces(newP, res.connector.map(function (P) { return P.id; }).concat(lay.mainPath.map(function (id) { return id + k * 10000; })), TU.rng(seedK, 12), k);
+    G.currents = (G.currents || []).concat(setupCurrents(TU.rng(seedK, 13), 's' + k));
+    // the cells of the old chamber that the hole changes: sampled now into a side map, swapped in when it opens
+    seg.touched = GEO.touchedCells(B0, B0.groups[B0.groups.length - 1], res.hole.cellA);
+    seg.temp = new Map();
+    W.job = { seg: seg, phase: 'sample', i: 0, j: 0, t: 0, meshList: null, mi: 0, dressJob: null, startMs: performance.now(), workMs: 0, maxStepMs: 0, frames: 0 };
+    // the moment: the ring wakes up and the chamber shakes
+    var an = ancientOf(prev.index); if (an) an.powerT = 1;
+    TU.emit('quake', { strength: 0.7, duration: ENDLESS.minOpenS + 1.2, pos: v3(prev.core) });
+    say('The Ancient Ring wakes up. The whole chamber is shaking.', 4, 0);
+    if (freedNow != null) say('Far above you, rock grinds on rock. The shaft you came down by is caving in.', 4, 1.6);
+    TU.emit('cave:segment', { index: k, state: 'building', seed: seedK, zone: beyondZone(dStart * CELL), zoneName: zoneName(beyondZone(dStart * CELL)), topM: dTop * CELL, freed: freedNow });
+    updateStats();
+    return { ok: true, index: k, seed: seedK, attempts: at, freed: freedNow, cells: res.cells.length, pieces: newP.length };
+  }
+  function ancientOf(segIndex) { var list = (W.anim && W.anim.ancients) || []; for (var i = 0; i < list.length; i++) if (list[i].seg === segIndex) return list[i]; return null; }
+
+  // One slice of the build job. budget in ms; force = run to the end now (tests, debug).
+  function jobStep(budget, force) {
+    var J = W.job; if (!J) return true;
+    var seg = J.seg, t0 = performance.now(), B0 = seg.from;
+    function left() { return force || performance.now() - t0 < budget; }
+    while (W.job === J && left()) {
+      if (J.phase === 'sample') {
+        if (J.i < seg.cells.length) { var c = seg.cells[J.i++]; GEO.sampleCell(G, c[0], c[1], c[2]); }
+        else if (J.j < seg.touched.length) { var c2 = seg.touched[J.j++]; GEO.sampleCell(G, c2[0], c2[1], c2[2], seg.temp); }
+        else J.phase = 'chunks';
+      } else if (J.phase === 'chunks') {
+        if (!J.meshList) {
+          var hp = v3(seg.hole.pos);
+          makeChunks(seg.cells, seg, null, 0);
+          W.pending = W.pending.filter(function (ch) { return ch.seg !== seg.index; }); // meshed by the job until the floor opens
+          J.meshList = seg.chunks.slice().sort(function (a, b) { return (hp.distanceTo(a.center) - a.radius) - (hp.distanceTo(b.center) - b.radius); })
+            .filter(function (ch) { return hp.distanceTo(ch.center) - ch.radius < 45; });
+        } else if (J.mi < J.meshList.length) buildChunk(J.meshList[J.mi++]);
+        else J.phase = 'dress';
+      } else if (J.phase === 'dress') {
+        if (!J.dressJob) {
+          J.dressJob = TU.caveDress.start(W, G, {
+            field: field, march: march, addCollider: addCollider, nearestOnPiece: nearestOnPiece, pathAt: pathAt, lin: lin,
+            palette: function (d, o) { return palette(d, o, seg.index); },
+            rand: TU.rng(seg.seed, 10).fn(), mats: W.mats, daylightAt: daylightAt, root: seg.root, seg: seg.index, seed: seg.seed,
+            pieces: seg.pieces.map(function (pi) { return G.pieces[pi]; }), bottom: seg.bottomP, entrance: false, findPrefix: 's' + seg.index
+          });
+        }
+        W.buildingSeg = seg.index;
+        var rest = force ? Infinity : Math.max(0.5, budget - (performance.now() - t0));
+        var done = J.dressJob.step(rest);
+        W.buildingSeg = 0;
+        if (done) { seg.dress = J.dressJob.out; seg.core = seg.dress.core; seg.coreAxis = seg.dress.coreAxis; J.phase = 'wait'; }
+      } else if (J.phase === 'wait') {
+        if (force || J.t >= ENDLESS.minOpenS) openSegment(seg);
+        break;
+      }
+    }
+    var ms = performance.now() - t0; J.workMs += ms; J.maxStepMs = Math.max(J.maxStepMs, ms); J.frames++;
+    return !W.job;
+  }
+
+  // The floor breaks open.
+  function openSegment(seg) {
+    var J = W.job, B0 = seg.from, prev = W.segs[seg.index - 1], hp = seg.hole.pos;
+    GEO.swapBlocks(G, seg.temp); seg.temp = null;
+    var done = new Set();
+    function remesh(c) { var ch = W.chunkByCell.get(GEO.key(c[0], c[1], c[2])); if (ch && !done.has(ch)) { done.add(ch); buildChunk(ch); } }
+    seg.touched.forEach(remesh);
+    seg.connector[0].cells.forEach(remesh);
+    clearAroundHole(prev, B0, hp);
+    // rocks fall away into the shaft, with a burst of silt
+    var rnd = TU.rng(seg.seed, 17).fn();
+    for (var i = 0; i < 9; i++) {
+      var p = [hp[0] + (rnd() - 0.5) * 3.6, B0.floorY + 0.5 + rnd() * 1.6, hp[2] + (rnd() - 0.5) * 3.6];
+      if (field(p[0], p[1], p[2]) < -0.35 && TU.caveDress.dropRock) TU.caveDress.dropRock(W, p, 0.16 + rnd() * 0.3, rnd, 0.1 + i * 0.12);
+    }
+    if (TU.fx && TU.fx.spawnSilt) TU.fx.spawnSilt(260, { pos: new T.Vector3(hp[0], B0.floorY + 0.8, hp[2]), burst: true });
+    airDome(B0, prev);
+    // the new ring is the goal now
+    G.bottom = seg.bottomP; W.core = seg.core; W.coreAxis = seg.coreAxis;
+    seg.opened = true; W.fallbackPi = seg.startP.idx;
+    if (W.spots) { ringSpots(W.spots); segSpots(seg); }
+    TU.cave.features = buildFeatures();
+    TU.cave.lengths = { main: G.main.L };
+    // the rest of the new walls are meshed as you get near (nearest first, a few per frame)
+    seg.chunks.forEach(function (ch) { if (!ch.mesh) W.pending.push(ch); });
+    var an = ancientOf(prev.index); if (an) an.powerT = 0.35;
+    TU.emit('quake', { strength: 1.3, duration: 2.6, pos: new T.Vector3(hp[0], hp[1], hp[2]) });
+    say('The floor breaks open. A shaft drops away into the dark under the Ring.', 4.5, 0);
+    if (B0.airDome) say('Air bubbles up into the dome above the Ring. Breathe up there before you go.', 4.5, 4.8);
+    if (seg.freedPrev != null) say('There is no way back up past the last ring now. Only down.', 4, 9.6);
+    var zi = beyondZone(seg.startM);
+    TU.emit('cave:segment', { index: seg.index, state: 'open', seed: seg.seed, zone: zi, zoneName: zoneName(zi), topM: seg.topM, bottom: v3(seg.core), freed: seg.freedPrev });
+    if (J) { seg.buildStats = { ms: Math.round(performance.now() - J.startMs), workMs: Math.round(J.workMs), maxStepMs: +J.maxStepMs.toFixed(1), frames: J.frames }; }
+    W.job = null;
+    updateStats();
+  }
+  // Boulders, stalagmites and standing stones over the hole fall in (and lose their colliders).
+  function clearAroundHole(prev, B0, hp) {
+    var R = ENDLESS.holeClear, m4 = new T.Matrix4(), p = new T.Vector3(), q = new T.Quaternion(), sc = new T.Vector3(), zero = new T.Vector3(0, 0, 0);
+    var rnd = TU.rng(prev.seed + 99, 18).fn();
+    (prev.dress ? prev.dress.regions : []).forEach(function (mesh) {
+      if (mesh.name !== 'boulders' && mesh.name !== 'cobbles' && mesh.name !== 'stalagmites') return;
+      var changed = false;
+      for (var i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m4); m4.decompose(p, q, sc);
+        if (sc.x < 1e-4 || Math.hypot(p.x - hp[0], p.z - hp[2]) > R + sc.x || p.y > B0.floorY + 4) continue;
+        if (mesh.name !== 'stalagmites' && TU.caveDress.dropRock && W.falling.length < 24) TU.caveDress.dropRock(W, [p.x, p.y + 0.2, p.z], Math.max(0.15, Math.min(0.6, sc.x * 0.5)), rnd, 0.15 + rnd() * 0.4);
+        m4.compose(p, q, zero); mesh.setMatrixAt(i, m4); changed = true;
+      }
+      if (changed) mesh.instanceMatrix.needsUpdate = true;
+    });
+    prev.root.traverse(function (o) {
+      if (o.name !== 'monolith' || !o.visible) return;
+      if (Math.hypot(o.position.x - hp[0], o.position.z - hp[2]) < R + 1.2) { o.visible = false; if (o.userData.col) o.userData.col.gone = true; }
+    });
+    var before = W.colliders.length;
+    W.colliders = W.colliders.filter(function (c) {
+      if (c.gone) return false;
+      var cp = c.t === 0 ? c.c : c.a;
+      return !(c.seg === prev.index && Math.hypot(cp[0] - hp[0], cp[2] - hp[2]) < R + c.r && cp[1] < B0.floorY + 4);
+    });
+    if (W.colliders.length !== before) rehashColliders();
+  }
+  function rehashColliders() { var list = W.colliders; W.colliders = []; W.colHash = new Map(); list.forEach(function (c) { addCollider(c); }); }
+  // The Ancient Ring chamber fills its dome with air when it opens (an air source between two caves).
+  function airDome(B0, sg) {
+    if (B0.waterY != null || !sg.core) return;
+    var core = sg.core, up = GEO.march(G, core[0], core[1], core[2], 0, 1, 0, 30), topY = core[1] + up;
+    var wy = Math.max(topY - 1.9, Math.min(topY - 0.9, core[1] + 5.4));
+    if (topY - wy < 0.8) return;
+    B0.waterY = wy; B0.airBox = { x0: B0.box.x0, x1: B0.box.x1, y0: B0.box.y0, y1: B0.box.y1, z0: B0.box.z0, z1: B0.box.z1 };
+    B0.airChamber = true; B0.airDome = true;
+    if (TU.caveDress.waterPlane) TU.caveDress.waterPlane(sg.root, W.mats, core[0], wy, core[2], B0.box.x1 - B0.box.x0, B0.box.z1 - B0.box.z0);
+  }
+  // Named spots in the newest segment (debug teleports and the tests).
+  function segSpots(seg) {
+    var S = W.spots, hp = seg.hole.pos, B0 = seg.from, st = seg.startP;
+    S.hole = mk([hp[0] + 2.2, B0.floorY + 2.2, hp[2] + 2.2], look([hp[0] + 2.2, B0.floorY + 2.2, hp[2] + 2.2], [hp[0], hp[1] - 4, hp[2]]), 0, 'main');
+    var c0 = seg.connector[seg.connector.length - 1].node;
+    S.shaft = mk(c0, { yaw: 0, pitch: -1.3 }, 0, 'main');
+    var sp = [st.center[0], Math.max(st.floorY + 2.4, st.center[1] - 1), st.center[2]];
+    var np = nearestOnPiece(st, sp[0], sp[1], sp[2]);
+    if (np) { var a = pathAt(np.path, np.s), b = pathAt(np.path, np.s + 6); S.segStart = mk(a.p, look(a.p, b.p), np.s, 'main'); } else S.segStart = mk(sp, { yaw: 0, pitch: 0 }, 0, 'main');
+    var AP = seg.pieces.map(function (pi) { return G.pieces[pi]; }).filter(function (P) { return P.type === 'air_pocket'; })[0];
+    if (AP) S.segPocket = mk([AP.node[0], AP.waterY - 1.7, AP.node[2]], { yaw: 0, pitch: 0.5 }, 0, 'main');
+    if (B0.airDome) S.dome = mk([sg0(seg).core[0] + 1.5, B0.waterY - 1.2, sg0(seg).core[2] + 1.5], { yaw: 0, pitch: 0.6 }, 0, 'main');
+    function sg0(sg) { return W.segs[sg.index - 1]; }
+  }
+  // Forget an old segment (far behind you): its rock, meshes, dressing and colliders go.
+  function freeSegment(j) {
+    var sg = W.segs[j]; if (!sg || sg.freed) return;
+    var cells = [];
+    sg.pieces.forEach(function (pi) { var P = G.pieces[pi]; P.freed = true; P.cells.forEach(function (c) { cells.push(c); }); });
+    GEO.freeCells(G, cells);
+    sg.chunks.forEach(function (ch) { if (ch.mesh) { ch.root.remove(ch.mesh); ch.mesh.geometry.dispose(); ch.mesh = null; } ch.cells.forEach(function (c) { W.chunkByCell.delete(GEO.key(c[0], c[1], c[2])); }); });
+    W.chunks = W.chunks.filter(function (ch) { return ch.seg !== j; });
+    W.pending = W.pending.filter(function (ch) { return ch.seg !== j; });
+    disposeGroup(sg.root); W.root.remove(sg.root);
+    W.instRegions = (W.instRegions || []).filter(function (m) { return m.userData.seg !== j; });
+    if (W.anim) {
+      W.anim.glints = W.anim.glints.filter(function (g) { return (g.seg || 0) !== j; });
+      W.anim.ancients = W.anim.ancients.filter(function (a) { return a.seg !== j; });
+      if (j === 0) { W.anim.rays = []; W.anim.dayLight = null; }
+    }
+    W.colliders = W.colliders.filter(function (c) { return c.seg !== j; }); rehashColliders();
+    W.falling = W.falling.filter(function (r) { if (G.cellMap.has(GEO.key(Math.floor(r.mesh.position.x / CELL), Math.floor(-r.mesh.position.z / CELL), Math.floor(-r.mesh.position.y / CELL)))) return true; W.root.remove(r.mesh); return false; });
+    G.paths.forEach(function (p) { if (p.owner.every(function (pi) { return G.pieces[pi].freed; })) p.freed = true; });
+    sg.freed = true; sg.dress = null; sg.chunks = [];
+    // the way back up caves in: rubble fills the top of the shaft into the next segment
+    var nx = W.segs[j + 1];
+    if (nx && nx.connector && nx.connector[0]) { collapsePiece(nx.connector[0], 'endless'); nx.sealedAbove = true; }
+    if (W.spots) Object.keys(W.spots).forEach(function (n) { var s0 = W.spots[n]; if (s0 && s0.pos && !G.cellMap.has(GEO.key(Math.floor(s0.pos.x / CELL), Math.floor(-s0.pos.z / CELL), Math.floor(-s0.pos.y / CELL)))) delete W.spots[n]; });
+    TU.cave.features = buildFeatures();
+    TU.emit('cave:segment', { index: j, state: 'freed' });
+  }
+  function disposeGroup(root) {
+    root.traverse(function (o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.isInstancedMesh && o.dispose) o.dispose();
+      var m = o.material;
+      if (m && m.userData && m.userData.own) {
+        ['map', 'emissiveMap', 'normalMap', 'alphaMap'].forEach(function (k) { if (m[k] && m[k].userData && m[k].userData.own) m[k].dispose(); });
+        m.dispose();
+      }
+    });
+    root.clear && root.clear();
+  }
+  // Short messages in a row (main.js shows them through ui:msg). delay in s of frame time.
+  function say(text, dur, delay) { (W.msgs = W.msgs || []).push({ at: (W.msgT || 0) + (delay || 0), text: text, dur: dur }); }
+  function pumpMsgs(dt) {
+    W.msgT = (W.msgT || 0) + dt;
+    if (!W.msgs || !W.msgs.length) return;
+    for (var i = 0; i < W.msgs.length; i++) if (W.msgs[i].at <= W.msgT) { var m = W.msgs.splice(i--, 1)[0]; TU.emit('ui:msg', { text: m.text, dur: m.dur }); }
+  }
+  // Debug and tests: finish the build job right now.
+  function finishSegment() { var n = 0; while (W.job && n++ < 100000) jobStep(Infinity, true); updateStats(); return W.stats; }
 
   /* ------------------------------------------------------------------ */
   /* Build                                                               */
@@ -881,6 +1285,7 @@
     W.root.clear && W.root.clear();
     W.root = null; W.chunks = []; W.pending = []; W.chunkByCell = new Map(); W.colliders = []; W.colHash = new Map(); W.falling = [];
     W.dress = null; W.anim = null; W.findMesh = {}; W.instRegions = []; W.rubble = null; W.spots = null;
+    W.segs = []; W.job = null; W.coreLight = null; W.beyondStartM = 1e9; W.buildingSeg = 0; W.fallbackPi = null;
     G = null; W.G = null;
   }
   function makeMaterials() {
@@ -901,7 +1306,8 @@
     var t0 = performance.now();
     if (!layout || !layout.ok) layout = TU.gen.generate(1, { difficulty: 'standard' });
     var bk = layout.seed + ':' + layout.difficulty + ':' + layout.checksum + ':' + (layout.modifiers || []).join(',');
-    if (W.built && W.buildKey === bk) { resetDynamic(); return; }
+    // the same cave again: just put back what quakes changed (unless endless mode added segments)
+    if (W.built && W.buildKey === bk && W.segs.length === 1 && !W.job) { resetDynamic(); return; }
     disposeWorld();
     makeMaterials();
     G = GEO.create(layout); W.G = G;
@@ -914,28 +1320,37 @@
     G.currents = setupCurrents();
     W.root = new T.Group(); W.root.name = 'cave';
     TU.scene.add(W.root);
+    // segment 0 is the first cave; endless mode adds more below it (see "Endless mode")
+    var seg0 = { index: 0, seed: layout.seed >>> 0, layout: layout, root: new T.Group(), chunks: [], opened: true, freed: false, pieces: G.pieces.map(function (P) { return P.idx; }), bottomP: G.bottom, startP: G.entrance, connector: [], dress: null };
+    seg0.root.name = 'cave-seg0'; W.root.add(seg0.root);
+    W.segs = [seg0]; W.buildingSeg = 0;
     SKY = [G.entrance.pool[0], 1.0, G.entrance.pool[2]];
     buildAllChunks();
     var tM = performance.now();
     var dress = TU.caveDress.build(W, G, {
       field: field, march: march, addCollider: addCollider, nearestOnPiece: nearestOnPiece, pathAt: pathAt, palette: palette, lin: lin,
-      rand: TU.rng(layout.seed, 10).fn(), mats: W.mats, daylightAt: daylightAt
+      rand: TU.rng(layout.seed, 10).fn(), mats: W.mats, daylightAt: daylightAt, root: seg0.root, seg: 0, fresh: true
     });
-    W.dress = dress;
+    W.dress = dress; seg0.dress = dress; seg0.core = dress.core; seg0.coreAxis = dress.coreAxis;
     W.core = dress.core; W.coreAxis = dress.coreAxis; W.stalSpot = dress.stalSpot;
+    W.entranceF = null;
     computeSpots();
     TU.cave.source = 'generated';
     TU.cave.layout = layout;
-    TU.cave.features = buildFeatures(dress);
+    TU.cave.features = buildFeatures();
     TU.cave.lengths = { main: G.main.L };
     W.built = true; W.buildKey = bk; W.t = 0; W.quakes = 0;
     W.stats = { ms: Math.round(performance.now() - t0), sampleMs: Math.round(tS - t0), meshMs: Math.round(tM - tS), dressMs: Math.round(performance.now() - tM), chunks: W.chunks.length, cells: G.cellMap.size, pieces: G.pieces.length, seed: layout.seed, difficulty: layout.difficulty, mainLength: Math.round(G.main.L), stalactites: dress.stalactites.length, colliders: W.colliders.length };
+    W.fallbackPi = G.entrance.idx;
     updateStats();
   }
   function updateStats() {
     if (!W.stats) return null;
     var tris = 0, verts = 0, built = 0; W.chunks.forEach(function (c) { if (c.mesh) { tris += c.tris; verts += c.verts; built++; } });
     W.stats.rockTris = tris; W.stats.rockVerts = verts; W.stats.chunksBuilt = built; W.stats.chunksPending = W.pending ? W.pending.length : 0;
+    W.stats.chunks = W.chunks.length; W.stats.liveCells = G ? G.cellMap.size : 0; W.stats.blocks = G ? G.blocks.size : 0; W.stats.colliders = W.colliders.length;
+    W.stats.segments = W.segs.map(function (sg) { return { index: sg.index, seed: sg.seed, chunks: sg.chunks.length, cells: sg.cellCount || (sg.index === 0 ? null : 0), opened: !!sg.opened, freed: !!sg.freed, difficulty: sg.layout && sg.layout.difficulty }; });
+    W.stats.building = !!W.job;
     return W.stats;
   }
   // Same cave again (restart with the same seed): put back what quakes changed.
@@ -961,6 +1376,9 @@
   function animate(dt) {
     if (!W.built) return;
     W.t += dt;
+    // rings waking up (endless mode): power eases toward its target
+    var ancs = (W.anim && W.anim.ancients) || [];
+    for (var ai = 0; ai < ancs.length; ai++) { var an = ancs[ai]; if (an.powerT != null) an.power = U.damp(an.power || 0, an.powerT, 1.6, dt); }
     if (TU.caveDress && TU.caveDress.animate) TU.caveDress.animate(W, G, dt);
     // run modifier "collapse ahead": the flagged main-line piece caves in as you approach it
     if (!W.collapseFired && TU.state.simulating()) {
@@ -972,6 +1390,9 @@
   function frame(dt) {
     if (!W.built) return;
     TU.caveMat.update(dt);
+    pumpMsgs(dt);
+    // a new endless segment is built a few ms per frame (the clock only runs while you dive)
+    if (W.job) { if (TU.state.simulating()) W.job.t += dt; jobStep(ENDLESS.budgetMs, false); }
     var cam = TU.camera.position;
     if (W.pending && W.pending.length) pumpChunks(cam, 5);
     // chunks farther than the cull distance are hidden (the fog has eaten them anyway); graphics quality sets it
@@ -982,12 +1403,27 @@
 
   TU.define('cave', {
     build: build, nearestPoint: nearestPoint, collide: collide, contains: contains, raycast: raycast,
-    isDry: isDry, waterSurfaceY: waterSurfaceY, zoneAt: zoneAt, areaAt: areaAt, randomSpot: randomSpot,
+    isDry: isDry, waterSurfaceY: waterSurfaceY, zoneAt: zoneAt, segmentAt: segmentAt, areaAt: areaAt, randomSpot: randomSpot,
     spot: spot, spawnPoint: spawnPoint, areas: AREAS,
     mapData: mapData, quake: quake, takeFind: takeFind, collapse: function (pieceId) { return G ? collapsePiece(G.byId[pieceId], 'debug') : false; },
     spotNames: function () { return SPOT_NAMES.filter(function (n) { return W.spots && !!W.spots[n]; }); },
     stats: function () { return updateStats(); },
     finishBuild: finishBuild,
+    // Endless mode (new): zone names past the five classic ones, and the KEEP DIVING segments.
+    zoneName: zoneName,
+    zoneInfo: function (index) { return { index: index, name: zoneName(index), topM: zoneTopM(index), beyond: index >= 5 }; },
+    zoneOfDepth: function (depthM, beyond) { return beyond || depthM >= (W.beyondStartM || 1e9) ? beyondZone(depthM) : U.zoneOfDepth(depthM); },
+    endless: {
+      descend: descend,                                  // (k?, { seed?, difficulty? }) -> { ok, index, seed, attempts, freed } ; builds over the next frames
+      building: function () { return !!W.job; },
+      phase: function () { return W.job ? W.job.phase : null; },
+      finish: finishSegment,                             // finish the build now (tests, debug)
+      segment: function () { return topSeg().index; },   // the segment whose ring is the goal
+      segments: function () { return updateStats() ? W.stats.segments : []; },
+      beyondStartM: function () { return W.beyondStartM < 1e9 ? W.beyondStartM : null; },
+      config: ENDLESS, zones: BEYOND,
+      lastBuild: function () { var sg = topSeg(); return sg.buildStats || null; }
+    },
     _W: W
   });
 

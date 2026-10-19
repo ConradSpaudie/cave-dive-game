@@ -1,3 +1,5 @@
+> **Resolved in the Oct 19 integration.** See CONTRACT.md section 16 for how each item was handled.
+
 # Requests from agent C
 
 Each request has a local fallback, so nothing breaks if it is not done.
