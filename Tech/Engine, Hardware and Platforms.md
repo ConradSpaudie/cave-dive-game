@@ -28,7 +28,8 @@
 - Two NVIDIA Quadro P2200 cards (5 GB VRAM each, about GTX 1060 class, no hardware ray tracing).
 - Good enough to run the Unreal 5.8 editor at medium settings with Lumen software lighting, and it can build the Windows version. The 5 GB of VRAM is the tight spot for photoreal scenes.
 - dxdiag showed "Direct3D Acceleration: Not Available". Normal over Remote Desktop; if not on Remote Desktop, update the NVIDIA driver.
-- Plan: Ty's PC is the Unreal and Windows build machine, if it has 150 GB or more free disk. That may remove the need for the Mac SSD.
+- Drives: C: is a 952 GB M.2 SSD (OS and apps, only 13 GB free on Oct 19). D: is a 1.81 TB HDD array in RAID 10, empty.
+- Plan: Ty's PC is the Unreal and Windows build machine. Ty frees about 100 GB on C: by moving rarely used apps to D:. Then: Visual Studio on C:, Unreal Engine on D:, the game project and its shader caches on C:.
 
 ## Proposed target specs (Windows, to be tested)
 | | Minimum (low settings, 1080p, 30 fps) | Recommended (high, 1080p, 60 fps) |
