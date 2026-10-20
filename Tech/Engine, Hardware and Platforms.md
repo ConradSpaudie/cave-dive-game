@@ -23,6 +23,13 @@
 - Unreal's Mac requirements list Lumen (real-time lighting) as supported on Apple Silicon M1 and up, while Nanite (high-detail geometry) and Virtual Shadow Maps are only beta-supported on M2 and up. Epic recommends an M3.
 - Need to confirm which chip and how much RAM the Mac has.
 
+## Ty's Windows PC (reported Oct 19)
+- Intel Core i9-9900K (8 cores, 16 threads), 64 GB RAM, Windows 11 Pro.
+- Two NVIDIA Quadro P2200 cards (5 GB VRAM each, about GTX 1060 class, no hardware ray tracing).
+- Good enough to run the Unreal 5.8 editor at medium settings with Lumen software lighting, and it can build the Windows version. The 5 GB of VRAM is the tight spot for photoreal scenes.
+- dxdiag showed "Direct3D Acceleration: Not Available". Normal over Remote Desktop; if not on Remote Desktop, update the NVIDIA driver.
+- Plan: Ty's PC is the Unreal and Windows build machine, if it has 150 GB or more free disk. That may remove the need for the Mac SSD.
+
 ## Proposed target specs (Windows, to be tested)
 | | Minimum (low settings, 1080p, 30 fps) | Recommended (high, 1080p, 60 fps) |
 |---|---|---|
