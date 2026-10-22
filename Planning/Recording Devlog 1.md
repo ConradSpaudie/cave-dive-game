@@ -105,11 +105,11 @@ Three console commands record shots for you, so your hands stay off the mouse an
 | Shot | Command | Use it for |
 |---|---|---|
 | **Drift in.** The camera glides from the entrance into the dark, beam ahead. | `dive.GoTo 0`, then `dive.Flythrough 20` | Opening shot, "Tied Under" title over it |
-| **The squeeze.** Slow glide through the narrow part, rock close on every side. | `dive.Flythrough 25 0.7 34 50` | Tension beat. Slower (0.7) feels tighter |
-| **Into the chamber.** Glide from the squeeze into the big room and stop in the middle. | `dive.Flythrough 30 1 70 92` | The "wow" moment |
-| **Look around the chamber.** Hover in the middle and slowly look left, up at the air pocket, right, back. | `dive.GoTo 88`, then `dive.LookAround 18` | Establishing shot, voiceover space |
+| **The squeeze.** Slow glide through the narrow part, rock close on every side. | `dive.Flythrough 25 0.7 58 74` (the Restriction is at about 68 m) | Tension beat. Slower (0.7) feels tighter |
+| **Into the chamber.** Glide from the squeeze into the big room and stop in the middle. | `dive.Flythrough 12 1 102 122` (the chamber is at about 110 to 137 m) | The "wow" moment |
+| **Look around the chamber.** Hover in the middle and slowly look left, up at the air pocket, right, back. | `dive.GoToMark Chamber`, then `dive.LookAround 18` | Establishing shot, voiceover space |
 | **Look around in the dark.** Same, light off (F), one cracked glow stick thrown ahead first. | `dive.LookAround 20` | Horror beat, "what's down there" |
-| **The way back.** Glide from deep toward the entrance (the camera faces back up the tunnel). | `dive.Flythrough 40 1 95 20` | Ending shot, or the "can you make it back" hook |
+| **The way back.** Glide from deep toward the entrance (the camera faces back up the tunnel). | `dive.Flythrough 40 1 120 20` | Ending shot, or the "can you make it back" hook |
 | **Thumbnail and Steam stills.** Freeze the best moment as a big clean picture. | `dive.Shot` (or `dive.Shot 4` for a poster) | YouTube thumbnail, Steam screenshots, Instagram post |
 
 Tips:
