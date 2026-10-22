@@ -26,3 +26,4 @@
 | 2026-10-21 | Game name: Tied Under (owner decision) |
 | 2026-10-21 | Studio name: built from Conrad, Tyrus and Loenn; proposed "Tylocon" (Ty + Lo + Con), awaiting final OK |
 | 2026-10-21 | Studio name: TyLoCon (Tyrus, Loenn, Conrad), written with that capitalization |
+| 2026-10-21 | Saboteur refined: 4-player lobbies choose a mode. Saboteur Mode = exactly one saboteur, always. Team Mode = no saboteur, all 4 on the same team |

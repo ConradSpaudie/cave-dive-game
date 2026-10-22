@@ -1,4 +1,7 @@
-> **Decided Oct 21, 2026 (Conrad): in every 4-player game, one player is always the saboteur.** Anything below about a percentage chance or the mode being optional is superseded.
+> **Decided Oct 21, 2026 (Conrad):** a 4-player lobby picks one of two modes before the dive:
+> - **Saboteur Mode:** exactly one player is always the saboteur. No random chance.
+> - **Team Mode:** no saboteur, all 4 divers on the same team.
+> Anything below about a percentage chance is superseded.
 
 # Saboteur Mode
 
