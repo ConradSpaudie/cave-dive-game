@@ -20,6 +20,10 @@ All 12 Phase 1 prompts are now built. Prompt 4 (arms anim instance) became the p
 - **Tuning:** one data asset (DA_DiveTuning) plus dive.* test commands.
 - **Player settings:** F10 (fn+F10) opens a panel: mouse sensitivity, invert Y, field of view, camera sway, steady camera, motion blur, volume, graphics quality. Saved between sessions. Also `dive.Set` and `dive.Settings`.
 - **Devlog tools:** `dive.Shot` (clean high-res screenshot), `dive.Flythrough` (smooth first-person glide along the tunnel for B-roll), `dive.LookAround` (slow establishing pan). Shot list added to [[Recording Devlog 1]].
+- **Halocline and thermocline:** in the chimney you sink through a shimmering fresh/salt water layer (blurry, wavy, you leave swirls in it) and then a cold layer (shiver, colder water, bluer tint). The watch shows which layer you are in.
+- **First-dive hints:** one short card at a time teaches each key at the moment you need it, each shown once. Hold F1 for all controls.
+- **Side passage seam:** the junction opening is a clean, sealed rock edge.
+- **Shareable Mac build:** packaged and zipped at ~/Projects/CaveDive_Builds (see [[Playtest Kit]]). It is unsigned: friends right-click it and choose Open the first time.
 - **Event sounds:** surfacing splash, plunge, drips with cave echo, low-air beeps, heartbeat with panic, glow stick crack, nail tink, tank clunk, silt rumble, rock scrapes.
 
 ## Fixes found by playing
