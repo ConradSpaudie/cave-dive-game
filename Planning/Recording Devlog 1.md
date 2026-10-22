@@ -99,6 +99,25 @@ Tips:
 - Keep each clip short (3 to 4 seconds). Twenty-five seconds is plenty.
 - Record the horizontal version at the same time if you can (same takes at 1920 x 1080) for YouTube and the Steam page later.
 
+## B-roll shot list (the recording helpers)
+Three console commands record shots for you, so your hands stay off the mouse and the moves are perfectly smooth. They are always first person (the diver's own eyes), never a camera outside the diver. Start each one with `stat none` and `dive.Cinematic` on, then start the screen recording, then type the command. Press W, A, S, D, Space or Shift (or type the command again) to stop early; you are put back exactly where you were.
+
+| Shot | Command | Use it for |
+|---|---|---|
+| **Drift in.** The camera glides from the entrance into the dark, beam ahead. | `dive.GoTo 0`, then `dive.Flythrough 20` | Opening shot, "Tied Under" title over it |
+| **The squeeze.** Slow glide through the narrow part, rock close on every side. | `dive.Flythrough 25 0.7 34 50` | Tension beat. Slower (0.7) feels tighter |
+| **Into the chamber.** Glide from the squeeze into the big room and stop in the middle. | `dive.Flythrough 30 1 70 92` | The "wow" moment |
+| **Look around the chamber.** Hover in the middle and slowly look left, up at the air pocket, right, back. | `dive.GoTo 88`, then `dive.LookAround 18` | Establishing shot, voiceover space |
+| **Look around in the dark.** Same, light off (F), one cracked glow stick thrown ahead first. | `dive.LookAround 20` | Horror beat, "what's down there" |
+| **The way back.** Glide from deep toward the entrance (the camera faces back up the tunnel). | `dive.Flythrough 40 1 95 20` | Ending shot, or the "can you make it back" hook |
+| **Thumbnail and Steam stills.** Freeze the best moment as a big clean picture. | `dive.Shot` (or `dive.Shot 4` for a poster) | YouTube thumbnail, Steam screenshots, Instagram post |
+
+Tips:
+- Record each B-roll shot 2 or 3 times; the bob and roll are a little different every take.
+- For a vertical video, the flythrough keeps the tunnel center in the middle of the frame, which is exactly the safe zone.
+- Air keeps running during a long flythrough. Type `dive.RefillAir` between takes.
+- Screenshots land in the project folder under `Saved/Screenshots`, named with the date and time.
+
 ## Edit and post
 1. Edit for free in **CapCut** or **iMovie**. Put real breathing audio at the very start.
 2. Export 1080 x 1920. Post the same video to TikTok and Reels the same day (see [[Content Calendar]]).
