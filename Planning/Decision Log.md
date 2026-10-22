@@ -20,3 +20,8 @@
 | 2026-10-19 | Keep Diving generates new deeper cave below the bottom (true endless mode) |
 | 2026-10-21 | New Mac (48 GB RAM, 2 TB): Unreal runs natively on it, no external SSD, no Windows emulator; Ty's PC does Windows builds |
 | 2026-10-21 | Keep Xcode 27.1 on the M5 Mac (editor builds work with UE 5.8.3; Mac game packaging blocked by a known bug until Epic fixes it) |
+| 2026-10-21 | Saboteur: in 4-player games one player is ALWAYS the saboteur (owner decision) |
+| 2026-10-21 | Ship on Mac and Windows at launch (owner decision) |
+| 2026-10-21 | Money: free game, revenue from ads AND paid cosmetics (owner decision) |
+| 2026-10-21 | Game name: Tied Under (owner decision) |
+| 2026-10-21 | Studio name: built from Conrad, Tyrus and Loenn; proposed "Tylocon" (Ty + Lo + Con), awaiting final OK |

@@ -1,3 +1,5 @@
+> **Decided Oct 21, 2026 (Conrad): in every 4-player game, one player is always the saboteur.** Anything below about a percentage chance or the mode being optional is superseded.
+
 # Saboteur Mode
 
 > **PROPOSAL, awaiting Conrad's approval.** Nothing here is decided. Built on saboteur answers 17 and 20 to 24 in [[Proposed Answers]]. Once approved, move the agreed parts into [[Rope and Multiplayer]] and log it in [[Decision Log]].

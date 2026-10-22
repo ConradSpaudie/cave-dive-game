@@ -1,5 +1,7 @@
 # Monetization
 
+> **Decided Oct 21, 2026 (Conrad): free game, revenue from BOTH ads and paid cosmetics.** Keep ads out of the dive itself: use places like sponsored items or posters in Sump Camp, and optional rewarded ads (for example, watch one for a cosmetic token). Never interrupt a dive.
+
 "Monetization" means how the game makes money.
 
 ## Decided

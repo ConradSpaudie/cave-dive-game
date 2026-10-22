@@ -12,6 +12,11 @@
 - Public demo / playtest on Steam before full launch.
 - Reach out to streamers once the demo is fun (PEAK-style games spread through streamers).
 
+## Decided Oct 21, 2026
+- Game name: **Tied Under**.
+- Team: Conrad (lead), Tyrus (co-developer, Windows builds), Loenn (team member, playtesting).
+- Studio name: made from Conrad, Tyrus and Loenn. Proposed **Tylocon** (Ty + Lo + Con), pronounced TIE-lo-con. No existing studio found by that name on Oct 21.
+
 ## Open
 - Game name.
 - Studio name.

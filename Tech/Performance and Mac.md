@@ -1,3 +1,5 @@
+> **Decided Oct 21, 2026 (Conrad): ship on Mac AND Windows at launch.** Mac packaging needs UE 5.8.4 or newer with Xcode 27 (5.8.4 is installed on Conrad's M5 Mac).
+
 # Performance and Mac
 
 Technical plan for frame-rate targets, scalability and whether to ship on Mac. Builds on [[Engine, Hardware and Platforms]]. Researched October 2026 against Unreal Engine 5.8.
