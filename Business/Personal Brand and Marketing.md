@@ -15,8 +15,7 @@
 ## Decided Oct 21, 2026
 - Game name: **Tied Under**.
 - Team: Conrad (lead), Tyrus (co-developer, Windows builds), Loenn (team member, playtesting).
-- Studio name: made from Conrad, Tyrus and Loenn. Proposed **Tylocon** (Ty + Lo + Con), pronounced TIE-lo-con. No existing studio found by that name on Oct 21.
+- Studio name: **TyLoCon** (Ty + Lo + Con, from Tyrus, Loenn and Conrad), pronounced TIE-lo-con. Always written with capital T, L and C.
 
 ## Open
-- Game name.
-- Studio name.
+- Nothing on naming.

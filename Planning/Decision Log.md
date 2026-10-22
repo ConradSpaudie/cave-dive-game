@@ -25,3 +25,4 @@
 | 2026-10-21 | Money: free game, revenue from ads AND paid cosmetics (owner decision) |
 | 2026-10-21 | Game name: Tied Under (owner decision) |
 | 2026-10-21 | Studio name: built from Conrad, Tyrus and Loenn; proposed "Tylocon" (Ty + Lo + Con), awaiting final OK |
+| 2026-10-21 | Studio name: TyLoCon (Tyrus, Loenn, Conrad), written with that capitalization |
