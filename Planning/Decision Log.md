@@ -45,3 +45,7 @@
 | 2026-10-21 | Caves must look jagged and real; 3 to 4 dry sections on Standard; 3 to 4 jump scares per run |
 | 2026-10-21 | Bottom chamber different every run: target 1,000 unique end chambers. Hub fully 3D, as detailed as the dive |
 | 2026-10-21 | Lore: broke surfer college dropouts partner with a broke grumpy old diver who has the gear; animated intro, not horror |
+| 2026-10-21 | Standard cave 120 m deep. Dry sections: Easy 2, Standard 3 to 4, Hard 5 to 6, Endless 1 to 3 every 40 m |
+| 2026-10-21 | Saboteur Mode: teammates can be revived at an air pocket within the time limit, otherwise dead forever |
+| 2026-10-21 | Free rainbow rope colors, paid rope skins (chain, ancient). 10 nails per person per dive |
+| 2026-10-21 | Lore locked: Gus, made-up region of Peru, Gus owes a shady buyer, lost city treasure legend, Coastal Pacific Community College (Sea Slugs). 90 s Unreal intro voiced by the team |

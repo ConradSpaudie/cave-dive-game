@@ -126,8 +126,8 @@ Conrad's voice answers to the 182 questions in the Claude doc "Tied Under: Unrea
 97. 5 zones, browser zone names kept.
 99. 20 set pieces: yes.
 100. Seeds and daily cave: yes.
-101. About 1.5 km of swimming. Depth said as "20 meters" (to confirm, the question said 120 m).
-102. **Dry sections:** 3 to 4 per run on medium (Standard). Endless: unlimited, about 1 to 2 for every 20 to 40 m of depth, growing as you go deeper (3 to 4, then 5 to 6, etc).
+101. **Standard cave: 120 m deep**, about 1.5 km of swimming.
+102. **Dry sections:** Easy 2, Standard 3 to 4, Hard 5 to 6. Endless: 1 to 3 dry sections every 40 m of depth, forever.
 103 to 116: all yes (haloclines, hydrogen sulfide, clarity, sun shafts, breakable stalactites, drifting silt, ceiling bubble mirrors, caustics, Lumen and Nanite with a low preset for Ty, earthquakes that close a path, everything synced, digging, glowing plants, old lines from past expeditions).
 
 ## 7. Creatures, predators, weapons
@@ -157,3 +157,23 @@ Conrad's voice answers to the 182 questions in the Claude doc "Tied Under: Unrea
 ## 10. Tech and team
 167 to 182: all accepted (60 fps target, a parent signs up for Steamworks, pay for GitHub storage when needed, sponsor posters only for ads, photo mode, streamer mode, cinematic camera, weekly playtests, Conrad has final say).
 - Loenn: playtester. Ty: Windows builds.
+
+## Follow-ups (Oct 21, 9 pm)
+- F1 Standard cave is 120 m deep.
+- F2 Dry sections: Easy 2, Standard 3 to 4, Hard 5 to 6, Endless 1 to 3 every 40 m.
+- F3 Solo mode stays in the full game.
+- F4 Camp sits on the rim of the giant Amazon sinkhole. You enter through a small jungle cenote near camp, come out in the giant sinkhole at the end, and walk the spiral stairs up to camp.
+- F5 Strokes have trade-offs: frog kick quiet and low silt, freestyle fast but loud and silty, doggy paddle slow but good in tight spots.
+- F6 Tanks: pick count (1 to 3), size (small, medium, large) and metal (aluminum gets floaty as it empties, steel stays heavy). More air = slower, more stamina drain, harder buoyancy. (Conrad's idea.)
+- F7 BCD: B adds short puffs that spend a little tank air, V dumps. Air expands as you rise, so if you don't dump you rocket up (the buoyancy launch).
+- F8 Camera sway: breath bob, kick sway, slight drift when stopping. One slider, default 60%.
+- F9 Keys: F flashlight, H hold to share air, X tape, N nail, hold Z for emotes and hand signals wheel, Enter for bubble text.
+- F10 Voice typing uses the computer's own dictation (Mac: Fn twice, Windows: Win+H).
+- F11 Saboteur Mode: teammates can be revived at an air pocket only within the time limit. If not revived in time, they are dead forever (ghost spectator).
+- F12 Team Mode: respawn at the top after 40 seconds with full air, no leftover tape or glow sticks.
+- F13 Rope colors: the basic rainbow colors are free. Custom rope skins are paid (ideas: chain, ancient).
+- F14 Nails: 10 per person per dive, more through upgrades.
+- F15 Currents never kill an unclipped diver outright: they drop them alive but lost in a side passage.
+- F16 Air refill tool: "The Lung", an old brass hand-pump compressor.
+- F17 to F20 Lore: the old man is **Gus**. The cave is in a made-up region of **Peru**. Gus owes money to a shady buyer, and a legend says the cave holds a lost city's treasure. The divers dropped out of **Coastal Pacific Community College** (mascot: the Sea Slugs).
+- F21 Intro animation: 90 seconds, made in Unreal, voiced by Conrad and friends.
