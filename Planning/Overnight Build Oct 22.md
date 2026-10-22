@@ -26,11 +26,23 @@ All 12 Phase 1 prompts are now built. Prompt 4 (arms anim instance) became the p
 - **Shareable Mac build:** packaged and zipped at ~/Projects/CaveDive_Builds (see [[Playtest Kit]]). It is unsigned: friends right-click it and choose Open the first time.
 - **Event sounds:** surfacing splash, plunge, drips with cave echo, low-air beeps, heartbeat with panic, glow stick crack, nail tink, tank clunk, silt rumble, rock scrapes.
 
+- **Dive moments:** every dive rolls 2 or 3 seeded surprises from 7 (rock fall with silt rolling at you, silt avalanche, light hiccup, squeeze snag, free-flow, knocking in the rock, a glinting found item). Same tunnel, different dive each time (pillar 4). The dive slate lists what happened. `dive.Moments` shows and re-rolls them.
+- **Rope look:** thin two-tone braided cave line with line arrows at each nail. `dive.RopeColor` cycles colors.
+- **Mask fog:** cold water, hard breathing and surfacing fog the mask; let a little water in (hold H underwater) to rinse it.
+- **Sound check without ears:** an offline test bench renders the synthesized audio to WAV files and checks it for clipping, clicks and balance. All clean; the plunge was too loud and is fixed. Listen to the sample dive WAV.
+- **Route test:** `dive.RouteTest` swims a test probe through the whole cave and reports the tightest spot (31 cm clear, passes).
+- **Windows notes for Tyrus:** WINDOWS-BUILD.md in the code repo.
+- **Devlog 1:** a script draft in [[Devlog 1 Script]].
+
 ## Fixes found by playing
 - The deep tunnel went black (fog got thicker with depth). Fixed.
 - About 10 ms per frame was lost to Lumen re-capturing moving meshes. Fixed, now about 12 ms GPU in the chamber.
 - Under and above an air pocket the light blew out to white. Fixed with exposure and haze changes.
 - Stuck keys after drowning, and a few other bugs from a full code review (see REVIEW-NIGHT.md in the code repo).
+
+- Taking the regulator out in an air pocket no longer floods the mask or runs the breath-hold timer.
+- Opening the console no longer fires held keys (it used to throw an aimed glow stick).
+- GPU: a Lumen reflection cap and depth of field only when it is visible. Entrance about 11 ms, chamber about 10 ms GPU on the M5. `dive.PerfToggle` switches suspects off one by one if it ever gets slow again.
 
 ## Ready for Phase 2 (prep only, nothing networked yet)
 Vest, panic and injuries now follow the "no component reaches into another" rule. REVIEW-NIGHT.md ends with a step-by-step Phase 2 networking prep plan.
