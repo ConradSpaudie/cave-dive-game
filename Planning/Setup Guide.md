@@ -2,7 +2,7 @@
 
 > **Update Oct 21, 2026: Conrad has a new Mac (48 GB RAM, about 2 TB storage). Skip every external SSD step.**
 > - No `CaveSSD`. Install everything on the Mac's own drive with the default locations.
-> - Xcode goes in `/Applications` (download Xcode 26.1.1 from developer.apple.com, not the App Store version).
+> - Xcode: Conrad's M5 Mac already has **Xcode 27.1** from the App Store, on macOS 27. Keep it. With UE 5.8.3 on Xcode 27, building and running the editor works; only packaging a standalone Mac game fails (known Epic forum bug, no official fix yet). We don't need Mac packages now: Ty's PC makes the Windows builds.
 > - Unreal Engine 5.8 installs to the Launcher default, `/Users/Shared/Epic Games/UE_5.8`.
 > - The game project lives at `~/Projects/CaveDive` (clone `ConradSpaudie/cave-dive-game-unreal` there).
 > - Leave the Unreal cache (DDC) at its default.

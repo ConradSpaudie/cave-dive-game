@@ -19,3 +19,4 @@
 | 2026-10-19 | Add predators and a choice of weapons at loadout (owner request), see [[Predators and Weapons]] |
 | 2026-10-19 | Keep Diving generates new deeper cave below the bottom (true endless mode) |
 | 2026-10-21 | New Mac (48 GB RAM, 2 TB): Unreal runs natively on it, no external SSD, no Windows emulator; Ty's PC does Windows builds |
+| 2026-10-21 | Keep Xcode 27.1 on the M5 Mac (editor builds work with UE 5.8.3; Mac game packaging blocked by a known bug until Epic fixes it) |

@@ -10,7 +10,7 @@
 - Source control: GitHub. Design docs: this Obsidian vault.
 
 ## Update Oct 21, 2026: new Mac
-- Conrad's new Mac: 48 GB RAM, about 2 TB storage (chip model to confirm). The disk space blocker below is solved: no external SSD needed.
+- Conrad's new Mac: 48 GB RAM, about 2 TB storage Apple M5, Xcode 27.1. The disk space blocker below is solved: no external SSD needed.
 - Unreal 5.8 runs natively on it. No Windows emulator: Windows on Apple Silicon has no DirectX 12, which Unreal 5 needs.
 - Roles: the Mac is the main Unreal development machine. Ty's Windows PC builds and tests the Windows version.
 
