@@ -1,6 +1,6 @@
 # Launch Plan
 
-How the game goes from "nobody knows it exists" to a free launch on Steam, stage by stage, tied to the [[Roadmap]]. Written 2026-10-17 as a proposal. Working title used below: **Tied Under** (see [[Proposed Answers]] #52). Studio name used below: **Bad Buoyancy** (#53). Swap them if those change.
+How the game goes from "nobody knows it exists" to a free launch on Steam, stage by stage, tied to the [[Roadmap]]. Written 2026-10-17 as a proposal. Working title used below: **Tied Under** (see [[Proposed Answers]] #52). Studio name: **TyLoCon** (decided after #53; Bad Buoyancy was the earlier pick). Swap them if those change.
 
 Related: [[Personal Brand and Marketing]], [[Content Calendar]], [[Monetization]], [[Game Pillars]], [[Research So Far]].
 
@@ -181,7 +181,7 @@ Rules for every trailer: real in-game footage, no CGI. Gameplay in the first 5 s
 >
 > No embargo, no strings. Play it whenever.
 >
-> Conrad, Bad Buoyancy
+> Conrad, TyLoCon
 
 Write the first line for real every time. Never send the same copy to everyone.
 
