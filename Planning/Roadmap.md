@@ -1,3 +1,5 @@
+> **Oct 21, 2026: the current plan is the Claude doc "Tied Under: Unreal Build Plan"** (https://claude.ai/artifact/TWK47Z85ViqoBhuBp9C6ya): 8 phases. 1 The Feel (to Nov 12, private Steam playtest), 2 The Cave (to Dec 23), 3 Life and danger (to Feb 3), 4 Hub, world and story (to Mar 3, public solo playtest), 5 Co-op (to Apr 7), 6 Saboteur Mode (to Apr 28), 7 Chambers and store (to May 19), 8 Polish and launch (late June 2027). The phases below are the older plan.
+
 # Roadmap
 
 The full design is huge. At 10 hours a week, trying to build everything at once means nothing ever gets finished. The plan is to build one small piece that looks and feels amazing, then grow it.
