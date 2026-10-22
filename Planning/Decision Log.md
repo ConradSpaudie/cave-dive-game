@@ -29,3 +29,19 @@
 | 2026-10-21 | Saboteur refined: 4-player lobbies choose a mode. Saboteur Mode = exactly one saboteur, always. Team Mode = no saboteur, all 4 on the same team |
 | 2026-10-21 | Saboteur Mode: if the other 3 kill the saboteur, the saboteur respawns at the surface stake and must follow the rope back down (same path as a mid-dive joiner) |
 | 2026-10-21 | Friendly fire: ON in Saboteur Mode, OFF in Team Mode (owner decision) |
+| 2026-10-21 | Everything is built and rendered in Unreal Engine 5.8; browser version is a test only |
+| 2026-10-21 | First public version is solo; build solo feel first, then co-op. Full release (no Early Access) by June 2027 |
+| 2026-10-21 | Skippable tutorial (easy to re-open), max 3 minutes, taught by the grumpy broke instructor |
+| 2026-10-21 | Post-dive reward scene: climb out into a giant Amazon sinkhole with ruins and spiral stairs, full forest and sky |
+| 2026-10-21 | No-mic options: Mic (default), Hand signals, Bubble text (typed or voice-typed speech bubbles) |
+| 2026-10-21 | Keys: C clip/unclip, no down key (look down to descend), Space up, E grab/climb/fins, Q slow breathing, G glow stick, R follow rope, T tug |
+| 2026-10-21 | Barrel roll, selectable swim strokes (freestyle, frog kick, doggy paddle...), and emotes (backflip, spin, cartwheel, handstand) |
+| 2026-10-21 | Air sharing by handing your regulator to a friend; found-only air refill tools that wear out and work worse with depth |
+| 2026-10-21 | 3 lights (15/5/5 min), 5 glow sticks with aimed throw arc, duct tape upgradeable from loot, drop only empty tanks |
+| 2026-10-21 | Mask flooding: predator hit, sharing air, or side-on to a current; no clear key; 5 to 10% blur |
+| 2026-10-21 | Real physics rope everywhere, wall nails to pin it, 6 m between divers, lobby votes rope color, unclipped divers get swept away (timing mini game to escape) |
+| 2026-10-21 | Voice range 9 m underwater. Saboteur tools: blood bait, valve wrench, visible scissors. In Saboteur Mode dead teammates stay dead |
+| 2026-10-21 | Team Mode: revive at an air pocket, else respawn at the top after about 40 seconds |
+| 2026-10-21 | Caves must look jagged and real; 3 to 4 dry sections on Standard; 3 to 4 jump scares per run |
+| 2026-10-21 | Bottom chamber different every run: target 1,000 unique end chambers. Hub fully 3D, as detailed as the dive |
+| 2026-10-21 | Lore: broke surfer college dropouts partner with a broke grumpy old diver who has the gear; animated intro, not horror |
