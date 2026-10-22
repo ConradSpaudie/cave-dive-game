@@ -50,3 +50,4 @@
 | 2026-10-21 | Free rainbow rope colors, paid rope skins (chain, ancient). 10 nails per person per dive |
 | 2026-10-21 | Lore locked: Gus, made-up region of Peru, Gus owes a shady buyer, lost city treasure legend, Coastal Pacific Community College (Sea Slugs). 90 s Unreal intro voiced by the team |
 | 2026-10-21 | Built-in Epic plugins approved: Geometry Script, PCG, Online Subsystem Steam (MetaHuman to confirm in Phase 4). First Unreal build passed on the M5 with zero errors |
+| 2026-10-21 | Time budget: about 15 hours a week (up from 10) to hit the June 2027 launch |
