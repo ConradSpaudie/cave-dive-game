@@ -1,6 +1,8 @@
 > **Decided Oct 21, 2026 (Conrad):** a 4-player lobby picks one of two modes before the dive:
 > - **Saboteur Mode:** exactly one player is always the saboteur. No random chance.
 > - **Team Mode:** no saboteur, all 4 divers on the same team.
+> - **Saboteur respawn:** if the other 3 kill the saboteur, the saboteur respawns at the surface stake and has to follow the rope back down to rejoin, the same way a friend who joins mid-dive does.
+> - This means divers can hurt each other in Saboteur Mode (needs confirming: friendly fire on in Saboteur Mode only, off in Team Mode).
 > Anything below about a percentage chance is superseded.
 
 # Saboteur Mode

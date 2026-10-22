@@ -27,3 +27,4 @@
 | 2026-10-21 | Studio name: built from Conrad, Tyrus and Loenn; proposed "Tylocon" (Ty + Lo + Con), awaiting final OK |
 | 2026-10-21 | Studio name: TyLoCon (Tyrus, Loenn, Conrad), written with that capitalization |
 | 2026-10-21 | Saboteur refined: 4-player lobbies choose a mode. Saboteur Mode = exactly one saboteur, always. Team Mode = no saboteur, all 4 on the same team |
+| 2026-10-21 | Saboteur Mode: if the other 3 kill the saboteur, the saboteur respawns at the surface stake and must follow the rope back down (same path as a mid-dive joiner) |
