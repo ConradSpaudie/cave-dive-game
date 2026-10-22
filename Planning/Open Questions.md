@@ -1,5 +1,7 @@
 # Open Questions (Round 2)
 
+> **Oct 21, 2026: Round 3 for the Unreal build lives in a Claude doc, "Tied Under: Unreal Build Questions" (182 questions, each with Claude's pick):** https://claude.ai/artifact/XPPETaTmQbH9u3VcqDa4S3 . Answers get copied into the Decision Log once Conrad finishes.
+
 Answer by number. "You decide" is a valid answer.
 
 ## Reminder
