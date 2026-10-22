@@ -18,3 +18,4 @@
 | 2026-10-19 | Sprint stroke: steady rhythm, at most 25% faster, no snapping (owner feedback) |
 | 2026-10-19 | Add predators and a choice of weapons at loadout (owner request), see [[Predators and Weapons]] |
 | 2026-10-19 | Keep Diving generates new deeper cave below the bottom (true endless mode) |
+| 2026-10-21 | New Mac (48 GB RAM, 2 TB): Unreal runs natively on it, no external SSD, no Windows emulator; Ty's PC does Windows builds |

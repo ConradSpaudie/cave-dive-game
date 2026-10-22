@@ -2,7 +2,7 @@
 
 Copy-paste prompts for Claude Code to build the Phase 1 "The Feel" prototype from the [[Roadmap]]: one handmade dark tunnel, solo only, with first-person swimming and visible hands, a flashlight whose light dies fast, an air meter with breathing audio hooks, buoyancy by breathing into the BCD, and silt-outs.
 
-Do [[Setup Guide]] first. Every prompt assumes Claude Code was started inside `/Volumes/CaveSSD/Projects/CaveDive` with the vault added (`claude --add-dir "<your vault path>"`).
+Do [[Setup Guide]] first. Every prompt assumes Claude Code was started inside `$HOME/Projects/CaveDive` with the vault added (`claude --add-dir "<your vault path>"`).
 
 Design sources: [[Game Pillars]], [[Movement and Swimming]], [[Diving Systems]], [[Audio]], [[HUD, Watch and Waypoints]], [[Engine, Hardware and Platforms]].
 
@@ -28,10 +28,10 @@ Then look at this Unreal project (CaveDive.uproject, Source/, Config/) and creat
 1. What the game is: a photoreal first-person 1 to 4 player co-op cave diving game for Steam in Unreal Engine 5.8. One-line pitch from Home.md. The failure condition (repetition).
 2. The five Game Pillars, one line each, and the tone guardrails (fully first person, 85% funny chaos / 15% tension).
 3. Current phase: Phase 1 "The Feel", solo only, one handmade tunnel. List its five features. Say clearly: do not build multiplayer, procedural caves, creatures, or anything from later phases yet, but write code that will not block 2-player networking later (keep gameplay state in components on the character, avoid singletons and static state).
-4. Machine facts: Apple Silicon Mac, chip <your chip>, <your RAM> GB RAM, macOS <version>, Xcode <version>, engine at "/Volumes/CaveSSD/Epic Games/UE_5.8", project at /Volumes/CaveSSD/Projects/CaveDive, internal disk nearly full (never write caches or big files outside the SSD). If the chip is M1, note that Nanite is not supported on this Mac.
+4. Machine facts: Apple Silicon Mac, chip <your chip>, <your RAM> GB RAM, macOS <version>, Xcode <version>, engine at "/Users/Shared/Epic Games/UE_5.8", project at $HOME/Projects/CaveDive, internal disk nearly full (never write caches or big files outside the SSD). If the chip is M1, note that Nanite is not supported on this Mac.
 5. Vault location: <your vault path>. Treat it as the source of truth for design. Read the relevant Design note before building any feature. If code and the vault disagree, ask me.
 6. Build and run commands for Mac. The editor build command is:
-   "/Volumes/CaveSSD/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" CaveDiveEditor Mac Development -Project="/Volumes/CaveSSD/Projects/CaveDive/CaveDive.uproject" -WaitMutex
+   "/Users/Shared/Epic Games/UE_5.8/Engine/Build/BatchFiles/Mac/Build.sh" CaveDiveEditor Mac Development -Project="$HOME/Projects/CaveDive/CaveDive.uproject" -WaitMutex
    Verify this command works by running it now and fix the path if needed. Note that the Unreal Editor must be closed before building, and that Live Coding is not part of our workflow.
 7. Coding conventions:
    - Core logic in C++. Blueprints only for asset references, tuning values, and visual glue. Every tunable number is a UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="...") with a sensible default and a comment with units (cm, cm/s, seconds, liters).

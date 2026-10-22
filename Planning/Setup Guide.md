@@ -1,5 +1,15 @@
 # Setup Guide
 
+> **Update Oct 21, 2026: Conrad has a new Mac (48 GB RAM, about 2 TB storage). Skip every external SSD step.**
+> - No `CaveSSD`. Install everything on the Mac's own drive with the default locations.
+> - Xcode goes in `/Applications` (download Xcode 26.1.1 from developer.apple.com, not the App Store version).
+> - Unreal Engine 5.8 installs to the Launcher default, `/Users/Shared/Epic Games/UE_5.8`.
+> - The game project lives at `~/Projects/CaveDive` (clone `ConradSpaudie/cave-dive-game-unreal` there).
+> - Leave the Unreal cache (DDC) at its default.
+> - Do NOT run Windows in an emulator for Unreal: Windows on Apple Silicon has no DirectX 12, and Unreal 5 needs it. The Mac runs Unreal natively. Ty's Windows PC makes the Windows builds.
+> Wherever the steps below say `CaveSSD`, use the default location instead.
+
+
 Goal: go from zero to "a blank UE5 C++ first-person project opens on my Mac and lives in its own GitHub repo." This is Phase 0 of the [[Roadmap]]. Background on why each step exists is in [[Engine, Hardware and Platforms]].
 
 Checked October 2026. The current engine is **Unreal Engine 5.8** (latest hotfix 5.8.3, released September 22, 2026, with 5.8.4 expected). Epic calls 5.8 the last planned major UE5 release (a 5.9 is still possible); Unreal Engine 6 Early Access is targeted for the end of 2027, so 5.8 is the version to build on.
@@ -128,7 +138,7 @@ The newest Xcode in the App Store is **not** the one you want. Unreal needs a sp
 4. Drag `Xcode.app` into `CaveSSD/Applications`. Delete the `.xip` afterward to save space.
 5. In Terminal, tell macOS to use this Xcode, accept the license, and finish setup (enter your Mac password when asked):
    ```bash
-   sudo xcode-select -s /Volumes/CaveSSD/Applications/Xcode.app/Contents/Developer
+   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
    sudo xcodebuild -license accept
    sudo xcodebuild -runFirstLaunch
    xcodebuild -downloadComponent MetalToolchain
@@ -147,7 +157,7 @@ Do not let the App Store "update" Xcode. If an Xcode appears in your main Applic
 2. Open it and **sign in with your Epic Games account** (create one if needed; turn on two-factor authentication).
 3. Click **Unreal Engine** in the left sidebar > **Library** tab.
 4. Next to "ENGINE VERSIONS", click **+**. A new engine slot appears; choose the newest **5.8.x** from its dropdown.
-5. Click **Install**. In the install dialog, click **Browse** and choose `CaveSSD/Epic Games`. The engine goes into `/Volumes/CaveSSD/Epic Games/UE_5.8`.
+5. Click **Install**. In the install dialog, click **Browse** and choose `CaveSSD/Epic Games`. The engine goes into `/Users/Shared/Epic Games/UE_5.8`.
 6. Click **Options** before confirming and trim the install:
    - Keep: **Core Components**, **Templates and Feature Packs** (you need the First Person template), **Starter Content**.
    - Untick: **Editor symbols for debugging** (huge), and the **iOS, tvOS, Android, Linux, visionOS** target platforms. You only need Mac for now.
@@ -170,7 +180,7 @@ A known launcher bug on Mac: clicking a project stored on an external drive in t
    - Target Platform: **Desktop**. Quality Preset: **Maximum**.
    - Starter Content: **off** (saves space; you can add it later).
    - Ray Tracing: leave off for now.
-   - Project Location: `/Volumes/CaveSSD/Projects`
+   - Project Location: `$HOME/Projects`
    - Project Name: `CaveDive` (no spaces, short)
 4. Click **Create**. Unreal generates the C++ code, compiles it with Xcode, and opens the editor. The first compile can take 10 to 20 minutes.
 5. Press **Play** (green triangle in the toolbar). You should be able to walk around the template level with first-person arms. Press **Esc** to stop.
@@ -208,7 +218,7 @@ Keep the game in its **own** repo, separate from this vault (`cave-dive-game`).
 1. On github.com (signed in as ConradSpaudie): **New repository** > name `cave-dive-game-unreal` > **Private** > do **not** add a README, .gitignore, or license > **Create repository**.
 2. In Terminal, go to the project:
    ```bash
-   cd /Volumes/CaveSSD/Projects/CaveDive
+   cd $HOME/Projects/CaveDive
    ```
 3. Create the `.gitignore`. Easiest: start Claude Code here and ask: "Create a .gitignore and .gitattributes for this UE 5.8 C++ project on Mac, exactly as described in the Setup Guide." Or create them yourself with these contents.
 
@@ -294,14 +304,14 @@ Claude Code works best when started inside the game project, with the vault adde
 1. Find your vault's path on the Mac. In Terminal, type `cd ` (with a space), drag the vault folder from Finder into the Terminal window, and press Enter. Then run `pwd` and copy the path it prints, for example `/Users/conrad/Documents/cave-dive-game`.
 2. Start Claude Code in the project with the vault added:
    ```bash
-   cd /Volumes/CaveSSD/Projects/CaveDive
+   cd $HOME/Projects/CaveDive
    claude --add-dir "/Users/conrad/Documents/cave-dive-game"
    ```
    (Use your real vault path.) If Claude Code is already running, type `/add-dir` and the vault path instead.
 3. Run the first prompt in [[Phase 1 Prompts]]. It creates a `CLAUDE.md` in the project that summarizes the game and tells Claude Code where the vault is, so every future session starts with context.
 4. Optional shortcut: add this line to `~/.zshrc` so typing `cavedive` does steps 2 and 3 for you:
    ```bash
-   alias cavedive='cd /Volumes/CaveSSD/Projects/CaveDive && claude --add-dir "/Users/conrad/Documents/cave-dive-game"'
+   alias cavedive='cd $HOME/Projects/CaveDive && claude --add-dir "/Users/conrad/Documents/cave-dive-game"'
    ```
 5. Keep the two repos separate: commit design changes in the vault repo, code and assets in `cave-dive-game-unreal`.
 

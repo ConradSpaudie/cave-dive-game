@@ -9,7 +9,12 @@
 - Controls: keyboard and mouse only for now. No controller at launch.
 - Source control: GitHub. Design docs: this Obsidian vault.
 
-## Blockers to solve before writing any game code
+## Update Oct 21, 2026: new Mac
+- Conrad's new Mac: 48 GB RAM, about 2 TB storage (chip model to confirm). The disk space blocker below is solved: no external SSD needed.
+- Unreal 5.8 runs natively on it. No Windows emulator: Windows on Apple Silicon has no DirectX 12, which Unreal 5 needs.
+- Roles: the Mac is the main Unreal development machine. Ty's Windows PC builds and tests the Windows version.
+
+## Blockers to solve before writing any game code (original, Oct 17)
 
 ### 1. Disk space (critical)
 - The Mac has about 7 GB free (measured Oct 17). Unreal Engine 5 plus Xcode plus a photoreal project needs well over 100 GB. Expect the engine alone to take tens of GB, Xcode another 10 to 40 GB, and high-detail rock assets and build caches to grow fast.
