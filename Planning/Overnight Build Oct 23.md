@@ -37,7 +37,8 @@ Everything below was compiled on the M5 and tried in Play unless it says otherwi
 The longest gap was always the same place: leaving the end slot through the silt room, where you have to swim slowly. Two changes for it:
 - **Return-only finds:** finds on "coming back" spots (a crack you only see on the ascent, the silt room corner once the silt settles) now stay hidden until you touch the End, then appear. Before, a thorough diver grabbed them on the way in and the swim back had nothing.
 - **Silt room gap rule:** 15 m instead of 26 m, because you swim slowly there.
-The next autopilot run picked up the silt room find on the way out; the gap there is now about 33 s, close to the 30 s target.
+The next autopilot run picked up the silt room find on the way out (gap there about 33 s). The run after the ledge fix below had its longest gap at 29 s, under the 30 s target for the first time, with the air bell taken, 10% air left and 2 stars.
+- **Air bell ledge fix:** set pieces treated a stalactite tip hanging into the chamber pool as "the wall", so on some seeds the ledge sat in the middle of the water right above where you come up, and you could not surface past it. Set pieces now only sit on real cave rock.
 
 ## Decisions for Conrad
 1. **Air is too tight for a first dive.** The fast autopilot, which never wastes a kick, came back with 14%, 11% and once only 3% (after a free-flow). A first-time player who stops to look around will drown on the way out. The simplest fix is a bigger starting tank (or a slightly lower breathing rate). The air bell top-up helps but is not enough on its own.
