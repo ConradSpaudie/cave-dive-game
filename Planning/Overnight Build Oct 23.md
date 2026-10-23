@@ -42,7 +42,7 @@ The next autopilot run picked up the silt room find on the way out (gap there ab
 - **Air bell ledge fix:** set pieces treated a stalactite tip hanging into the chamber pool as "the wall", so on some seeds the ledge sat in the middle of the water right above where you come up, and you could not surface past it. Set pieces now only sit on real cave rock.
 
 ## Decisions for Conrad
-1. **Air is too tight for a first dive.** The fast autopilot, which never wastes a kick, came back with 14%, 11% and once only 3% (after a free-flow). A first-time player who stops to look around will drown on the way out. The simplest fix is a bigger starting tank (or a slightly lower breathing rate). The air bell top-up helps but is not enough on its own.
+1. **Air: probably fine now, keep an eye on it.** Before the air bell fixes the autopilot came back with only 3 to 14% air. After them (the ledge reachable and the pocket the right size, so the air bell tops you up properly) it came back with 33% at full speed and 26% at 70% speed. If first-time playtesters still run out, the simplest fix is a bigger starting tank.
 2. **Cuts kill.** An untaped cut took the slow run from 100% to 0 health in about 3 minutes on the way back. The hint card teaches X, but this may be harsher than the 85% fun / 15% tension split.
 3. **Phase order** (still open from last night): Roadmap says Phase 2 is co-op, the Unreal Build Plan says cave generator first.
 
