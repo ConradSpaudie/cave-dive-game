@@ -42,5 +42,6 @@ The longest gap is always the same place: leaving the end slot through the silt 
 3. **Phase order** (still open from last night): Roadmap says Phase 2 is co-op, the Unreal Build Plan says cave generator first.
 
 ## Fixes found tonight
+- In the chamber, the air pocket's water showed hard straight edges from below. Stalactite tips hanging below the water line made the water get fitted far too small. It now measures only the cave rock.
 - The autopilot could loop forever surfacing at the air bell, or retry a stuck spot for 20 minutes. Both capped.
 - A review pass fixed the autopilot letting go of keys when the game window loses focus, and its report mixing two clocks.
