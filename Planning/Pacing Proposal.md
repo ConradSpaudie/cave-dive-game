@@ -1,6 +1,6 @@
 # Tied Under: Pacing Proposal (Phase 1, solo tunnel)
 
-Status: proposal for Conrad to react to (Oct 22, 2026). Not decided yet. Related: [[Run Variety System]], [[Overnight Build Oct 22]].
+Status: Conrad said go (Oct 22, 2026). Built the same night, all 8 steps, compiled and tried in Play on the Mac: faster swim, beat gap meter, skill callouts and depth record, 24 find spots with haul, the three set pieces (air bell ledge, end slot pull, diver's slates), the return trip (outbound current, return moments, ascent pop), and stars, bests and the collection save. Next: a full no-command playtest to read the real longest gap, then a polish pass (bigger cards and counters, silt puff too white). Related: [[Run Variety System]], [[Overnight Build Oct 22]].
 
 **The plan in one line:** keep the 169 m route, make swimming about 15% faster, and fill the route with seeded **finds** and **skill callouts** so something good happens every 15 to 30 seconds. Then turn the three big rooms (chimney, chamber, end slot) into the big payoffs, and give the swim back its own new beats.
 
