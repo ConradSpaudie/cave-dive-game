@@ -32,11 +32,12 @@ Everything below was compiled on the M5 and tried in Play unless it says otherwi
 | Full speed | 5:54 | 33 (one every 11 s) | 34 s (162 to 140 m, right after the end slot) | 14 of 15, $1774 | Back out with 11% air, 3 stars |
 | 70% speed | 7:43 | 35 (one every 14 s) | 39 s (165 to 140 m) | 12 of 13 | Bled out on the way back with 54% air left (it never taped a cut; the autopilot tapes now) |
 | Full speed, final build | 5:58 | 32 (one every 11 s) | 33 s (160 to 140 m) | 13 of 13, $1040 | Back out with 14% air, 3 stars |
+| Full speed, final build again | 6:11 | 35 (one every 11 s) | 31 s (136 to 155 m) | 14 of 14, $1960 | Back out with only 3% air after a free-flow, 2 cuts, 3 stars |
 
 The longest gap is always the same place: leaving the end slot through the silt room, where you have to swim slowly. It is only a little over the 30 s target, so I left it. A find that only shows on the way out in the silt room would close it.
 
 ## Decisions for Conrad
-1. **Air is tight but fair.** The fast autopilot came back with 11 to 14% air. The slow run still had 54% on the way back because the air bell tops you up, so the air bell is doing its job. If first-time players run out, the fix is a bigger starting tank.
+1. **Air is too tight for a first dive.** The fast autopilot, which never wastes a kick, came back with 14%, 11% and once only 3% (after a free-flow). A first-time player who stops to look around will drown on the way out. The simplest fix is a bigger starting tank (or a slightly lower breathing rate). The air bell top-up helps but is not enough on its own.
 2. **Cuts kill.** An untaped cut took the slow run from 100% to 0 health in about 3 minutes on the way back. The hint card teaches X, but this may be harsher than the 85% fun / 15% tension split.
 3. **Phase order** (still open from last night): Roadmap says Phase 2 is co-op, the Unreal Build Plan says cave generator first.
 
