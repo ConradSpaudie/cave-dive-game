@@ -1,0 +1,45 @@
+# Overnight Build (Oct 23, 2026)
+
+Conrad's ask before bed: make the hands and body move with you when you turn and move (visually intuitive), make swimming smoother using real swim animation as the standard, then keep building through the night.
+
+Everything below was compiled on the M5 and tried in Play unless it says otherwise. Code is on GitHub (cave-dive-game-unreal, main).
+
+## Your body steers (the main ask)
+- **Research first:** how real divers turn, strafe, rise and back up (helicopter turn, back kick, sculling), and how first-person games show it. Written up in `Docs/SwimAnimationResearch.md` in the code repo.
+- **Turning:** the body leads the view a little and rolls into the turn. Hovering, the outside hand reaches forward and sweeps out to pull you around, the light hand tucks in. Swimming, the outside arm strokes bigger and the inside one smaller.
+- **Strafing, rising, sinking, backing up:** sideways sculls, palms pressing down or sweeping up, back sculls, with matching fin kicks.
+- **In view:** the first version did all of this at chest height, so only fingertips showed at the bottom of the screen. The strokes are now lifted into view (`SteerHandLift` 0.4, tune live with `DiveSteerLift`).
+- **Smooth:** every weight eases with springs that cannot overshoot or pop, and every limb trails a follow spring. `DiveBodyMotion 0/1` compares old and new.
+- **Your hands touch the rock:** short feeler rays find rock around you. A close wall or a low ceiling gets a palm laid flat on it, and in a squeeze the free hand pulls you through in time with the kick. A soft scrape plays when a palm lands. It shows best on low ceilings (the bedding plane); a side wall right beside you is just outside the view, like in real life. `DiveWallTouch 0/1` compares.
+
+## Rewards look and feel better
+- Big, sharp reward cards (the engine's "large" font was the small one stretched, so text was blurry).
+- Pickup cards pop in, count up their dollars and fly them to the haul counter. Rare and Legendary cards get a colored screen edge glow; Legendary gets gold rays.
+- Skill callouts slam in like a stamp. Diver's slates look like pencil notes. The end slot pull ring is bigger, shakes near the end and bursts.
+- `DiveJuice` previews each effect without playing to it.
+
+## Silt
+- Silt is tan when thin and murky brown when thick.
+- The white disc in a silt-out is gone: it was the dive light lighting up the fog right in front of the lens (proved by switching volumetric fog off). The beam's glow now fades out as soon as there is real silt around you or in the first 3 m ahead. `DiveSiltScatter` tunes it live.
+
+## Testing tools
+- **Autopilot:** `dive.AutoDive full` plays a whole dive on its own (finds, slates, air bell, end slot, the swim out) and prints a pacing report. Use it as a smoke test after every build.
+- **Practice dives:** teleports, `dive.RefillAir`, `dive.MarkEnd` and the autopilot now keep a dive out of your saved progress (no bests, stars or collection). The slate says "Practice dive: nothing saved." Before this, test runs had set a best time of 0:15. Your old save is backed up as `Saved/SaveGames/DiveProgress_backup_Oct23_night.sav`.
+
+## What the autopilot measured
+| Run | Time | Beats | Longest gap | Finds | Result |
+|---|---|---|---|---|---|
+| Full speed | 5:54 | 33 (one every 11 s) | 34 s (162 to 140 m, right after the end slot) | 14 of 15, $1774 | Back out with 11% air, 3 stars |
+| 70% speed | 7:43 | 35 (one every 14 s) | 39 s (165 to 140 m) | 12 of 13 | Bled out on the way back with 54% air left (it never taped a cut; the autopilot tapes now) |
+| Full speed, final build | 5:58 | 32 (one every 11 s) | 33 s (160 to 140 m) | 13 of 13, $1040 | Back out with 14% air, 3 stars |
+
+The longest gap is always the same place: leaving the end slot through the silt room, where you have to swim slowly. It is only a little over the 30 s target, so I left it. A find that only shows on the way out in the silt room would close it.
+
+## Decisions for Conrad
+1. **Air is tight but fair.** The fast autopilot came back with 11 to 14% air. The slow run still had 54% on the way back because the air bell tops you up, so the air bell is doing its job. If first-time players run out, the fix is a bigger starting tank.
+2. **Cuts kill.** An untaped cut took the slow run from 100% to 0 health in about 3 minutes on the way back. The hint card teaches X, but this may be harsher than the 85% fun / 15% tension split.
+3. **Phase order** (still open from last night): Roadmap says Phase 2 is co-op, the Unreal Build Plan says cave generator first.
+
+## Fixes found tonight
+- The autopilot could loop forever surfacing at the air bell, or retry a stuck spot for 20 minutes. Both capped.
+- A review pass fixed the autopilot letting go of keys when the game window loses focus, and its report mixing two clocks.
