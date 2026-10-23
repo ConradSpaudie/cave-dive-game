@@ -34,7 +34,10 @@ Everything below was compiled on the M5 and tried in Play unless it says otherwi
 | Full speed, final build | 5:58 | 32 (one every 11 s) | 33 s (160 to 140 m) | 13 of 13, $1040 | Back out with 14% air, 3 stars |
 | Full speed, final build again | 6:11 | 35 (one every 11 s) | 31 s (136 to 155 m) | 14 of 14, $1960 | Back out with only 3% air after a free-flow, 2 cuts, 3 stars |
 
-The longest gap is always the same place: leaving the end slot through the silt room, where you have to swim slowly. It is only a little over the 30 s target, so I left it. A find that only shows on the way out in the silt room would close it.
+The longest gap was always the same place: leaving the end slot through the silt room, where you have to swim slowly. Two changes for it:
+- **Return-only finds:** finds on "coming back" spots (a crack you only see on the ascent, the silt room corner once the silt settles) now stay hidden until you touch the End, then appear. Before, a thorough diver grabbed them on the way in and the swim back had nothing.
+- **Silt room gap rule:** 15 m instead of 26 m, because you swim slowly there.
+The next autopilot run picked up the silt room find on the way out; the gap there is now about 33 s, close to the 30 s target.
 
 ## Decisions for Conrad
 1. **Air is too tight for a first dive.** The fast autopilot, which never wastes a kick, came back with 14%, 11% and once only 3% (after a free-flow). A first-time player who stops to look around will drown on the way out. The simplest fix is a bigger starting tank (or a slightly lower breathing rate). The air bell top-up helps but is not enough on its own.
